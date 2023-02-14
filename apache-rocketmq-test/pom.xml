@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.example</groupId>
-    <artifactId>rocketmq-test</artifactId>
+    <artifactId>apache-rocketmq-test</artifactId>
     <version>1.0-SNAPSHOT</version>
     <dependencies>
         <!-- https://mvnrepository.com/artifact/org.apache.rocketmq/rocketmq-client-java -->

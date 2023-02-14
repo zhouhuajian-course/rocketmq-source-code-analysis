@@ -1,5 +1,53 @@
 # RocketMQ 源码分析
 
+## 生产端更新Topic路由信息
+
+1. 定时更新，默认每隔30秒；
+2. 主动更新，发消息时，具体的Topic路由
+
+到NameServer获取最新的Topic路由，并保存到本地内存
+
+```java
+public class MQClientInstance {
+    // ...
+    private void startScheduledTask() {
+        // ...
+        this.scheduledExecutorService.scheduleAtFixedRate(() -> {
+            try {
+                MQClientInstance.this.updateTopicRouteInfoFromNameServer();
+            } catch (Exception e) {
+                log.error("ScheduledTask updateTopicRouteInfoFromNameServer exception", e);
+            }
+        }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
+        // ...
+    }
+    // ...
+}    
+```
+
+```java
+public class DefaultMQProducerImpl implements MQProducerInner {
+    // ...
+    private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
+        TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
+        if (null == topicPublishInfo || !topicPublishInfo.ok()) {
+            this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
+            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
+            topicPublishInfo = this.topicPublishInfoTable.get(topic);
+        }
+
+        if (topicPublishInfo.isHaveTopicRouterInfo() || topicPublishInfo.ok()) {
+            return topicPublishInfo;
+        } else {
+            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic, true, this.defaultMQProducer);
+            topicPublishInfo = this.topicPublishInfoTable.get(topic);
+            return topicPublishInfo;
+        }
+    }
+    // ...
+}    
+```
+
 ## RocketMQ 官网
 
 https://rocketmq.apache.org/
