@@ -7,6 +7,8 @@
 
 到NameServer获取最新的Topic路由，并保存到本地内存
 
+rocketmq-all-5.0.0-source-release/example/src/main/java/org/apache/rocketmq/example/quickstart
+
 ```java
 public class MQClientInstance {
     // ...
