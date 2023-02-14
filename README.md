@@ -406,6 +406,8 @@ https://rocketmq.apache.org/zh/download#rocketmq-dashboard
 
 旧版本源码是在rocketmq-external里的rocketmq-console，新版本已经单独拆分成rocketmq-dashboard
 
+https://rocketmq.apache.org/zh/docs/deploymentOperations/04Dashboard
+
 `mvn spring-boot:run`
 
 ## Java 版本命名

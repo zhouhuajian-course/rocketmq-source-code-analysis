@@ -10,10 +10,12 @@ import org.apache.rocketmq.client.apis.producer.SendReceipt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+
 public class SimpleProducer {
     private static final Logger logger = LoggerFactory.getLogger(SimpleProducer.class);
 
-    public static void main(String[] args) throws ClientException {
+    public static void main(String[] args) throws ClientException, IOException {
         // 接入点地址，需要设置成Proxy的地址和端口列表，一般是xxx:8081;xxx:8081。
         String endpoint = "localhost:8081";
         // 消息发送的目标Topic名称，需要提前创建。 !!!
@@ -43,6 +45,6 @@ public class SimpleProducer {
         } catch (ClientException e) {
             logger.error("Failed to send message", e);
         }
-        // producer.close();
+        producer.close();
     }
 }
