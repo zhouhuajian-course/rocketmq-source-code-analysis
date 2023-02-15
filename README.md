@@ -1,6 +1,100 @@
 # RocketMQ 源码分析
 
+## NameServer
+
+NameServer是注册中心，类似Zookeeper、Nacos
+
+不同的是，NameServer集群的每个NameServer是不互相通信的
+
+Broker启动时需要指定所有NameServer地址，并且NameServer和Broker会有长连接，会有心跳检测、剔除机制等。
+
+## 自动创建主题
+
+生成客户端，发送消息，如果主题路由没找到，那么会再找一次，进行自动创建主题
+
+```text
+    private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
+        TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
+        // 找不到主题路由
+        if (null == topicPublishInfo || !topicPublishInfo.ok()) {
+            this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
+            // 从NameServer拉取主题路由信息
+            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
+            // 获取主题发布信息
+            topicPublishInfo = this.topicPublishInfoTable.get(topic);
+        }
+        // 找到路由信息则返回
+        if (topicPublishInfo.isHaveTopicRouterInfo() || topicPublishInfo.ok()) {
+            return topicPublishInfo;
+        } else {
+            // 如果依然找不到主题路由信息，则会自动创建主题，注意第二个参数为true
+            this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic, true, this.defaultMQProducer);
+            topicPublishInfo = this.topicPublishInfoTable.get(topic);
+            return topicPublishInfo;
+        }
+    }
+    
+    public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
+        DefaultMQProducer defaultMQProducer) {
+        try {
+            if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+                try {
+                    TopicRouteData topicRouteData;
+                    if (isDefault && defaultMQProducer != null) {
+                        topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
+                            clientConfig.getMqClientApiTimeout());
+         ...
+    }
+    
+    defaultMQProducer.getCreateTopicKey()
+    
+// rocketmq-common
+public class TopicValidator {
+    public static final String AUTO_CREATE_TOPIC_KEY_TOPIC = "TBW102"; // Will be created at broker when isAutoCreateTopicEnable
+    public static final String RMQ_SYS_SCHEDULE_TOPIC = "SCHEDULE_TOPIC_XXXX";
+    ...
+    
+// rocketmq-broker
+    public TopicConfigManager(BrokerController brokerController) {
+        this.brokerController = brokerController;
+        {
+            String topic = TopicValidator.RMQ_SYS_SELF_TEST_TOPIC;
+            TopicConfig topicConfig = new TopicConfig(topic);
+            TopicValidator.addSystemTopic(topic);
+            topicConfig.setReadQueueNums(1);
+            topicConfig.setWriteQueueNums(1);
+            this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+        }
+        {
+        }
+            // 自动创建主题
+            if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
+                String topic = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
+                TopicConfig topicConfig = new TopicConfig(topic);
+                TopicValidator.addSystemTopic(topic);
+                topicConfig.setReadQueueNums(this.brokerController.getBrokerConfig()
+                    .getDefaultTopicQueueNums());
+                topicConfig.setWriteQueueNums(this.brokerController.getBrokerConfig()
+                    .getDefaultTopicQueueNums());
+                int perm = PermName.PERM_INHERIT | PermName.PERM_READ | PermName.PERM_WRITE;
+                topicConfig.setPerm(perm);
+                this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+            }
+        }
+        ...
+```
+
+## 客户端、服务端配置同步模型
+
++ push模型，发布订阅模型，实时性高，但服务端要维护客户端的长连接，要进行心跳检测等，需要占用较多的系统资源。
+  适合用在实时性要求较高，客户端不多的情况。
++ pull模型，拉取模型，客户端定时向服务端拉取最新配置，实时性较差，一般30秒拉取一次，不需要维护长连接，拉取完后，直接断开连接。
++ long pulling模型，客户但定时向服务端拉去最新配置，但不会马上断开连接，服务端维护一段时间，如果这段时间内有配置更新，马上通知客户端。时间过了，就断开连接。
+  中庸之道，充分考虑push和pull模型两者的优缺点。
+
 ## 生产端更新Topic路由信息 
+
+生产客户端和NameServer服务端的配置同步是使用了pull模型
 
 rocketmq-client (not rocketmq-client-java)
 
