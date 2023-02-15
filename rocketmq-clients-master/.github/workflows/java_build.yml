@@ -1,0 +1,23 @@
+name: Java Build
+on: 
+  workflow_call:
+jobs:
+  build:
+    name: "${{ matrix.os }}, jdk-${{ matrix.jdk }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, macos-11, windows-2022]
+        jdk: [11, 17]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Set up JDK ${{ matrix.jdk }}
+        uses: actions/setup-java@v2
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: "adopt"
+          cache: maven
+      - name: Build with Maven
+        working-directory: ./java
+        run: mvn -B package --file pom.xml

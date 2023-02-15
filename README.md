@@ -1,6 +1,8 @@
 # RocketMQ 源码分析
 
-## 生产端更新Topic路由信息
+## 生产端更新Topic路由信息 
+
+rocketmq-client (not rocketmq-client-java)
 
 1. 定时更新，默认每隔30秒；
 2. 主动更新，发消息时，具体的Topic路由
@@ -532,3 +534,16 @@ create topic to 192.168.1.103:10911 success.
 TopicConfig [topicName=TestTopic123, readQueueNums=8, writeQueueNums=8, perm=RW-, topicFilterType=SINGLE_TAG, topicSysFlag=0, order=false, attributes={}]
 
 ```
+
+## rocketmq-client-java 和 rocketmq-client
+
+https://github.com/apache/rocketmq-clients
+
+https://github.com/apache/rocketmq-clients/issues/325
+
+> 欢迎关注 5.0 客户端，rocketmq-client-java 对应的客户端是 RocketMQ 社区推荐的新的 5.0 客户端，未来 RocketMQ 客户端新的 feature 和主力维护方向是在当前仓库进行的（包含以此衍生的所有多语言客户端），关于这一点，你可以在 RocketMQ 官网进行参阅。
+rocketmq-client 对应的是 RocketMQ 旧有的客户端，沿袭 RocketMQ 的旧有设计和编码，原则上只做 bugfix，不再进行 feature 新增。
+
+## Articles
+
++ 全面升级 —— Apache RocketMQ 5.0 SDK 的新面貌 https://developer.aliyun.com/article/797655
