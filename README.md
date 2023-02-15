@@ -1,5 +1,94 @@
 # RocketMQ 源码分析
 
+## 生成端发送，选择主题里面的队列
+
+简单情况，轮询其中一个队列进行发送
+
+```text
+// rocketmq-client
+    private SendResult sendDefaultImpl(
+        Message msg,
+        final CommunicationMode communicationMode,
+        final SendCallback sendCallback,
+        final long timeout
+    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        ...
+        // 找到主题发布信息
+        TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
+        if (topicPublishInfo != null && topicPublishInfo.ok()) {
+            ...
+            // 发消息重试机制
+            for (; times < timesTotal; times++) {
+                String lastBrokerName = null == mq ? null : mq.getBrokerName();
+                // 选择一个消息队列
+                MessageQueue mqSelected = this.selectOneMessageQueue(topicPublishInfo, lastBrokerName);
+                ...
+
+    public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+        if (this.sendLatencyFaultEnable) {
+            try {
+                int index = tpInfo.getSendWhichQueue().incrementAndGet();
+                for (int i = 0; i < tpInfo.getMessageQueueList().size(); i++) {
+                    int pos = Math.abs(index++) % tpInfo.getMessageQueueList().size();
+                    if (pos < 0)
+                        pos = 0;
+                    MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
+                    if (latencyFaultTolerance.isAvailable(mq.getBrokerName()))
+                        return mq;
+                }
+
+                final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
+                int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
+                if (writeQueueNums > 0) {
+                    final MessageQueue mq = tpInfo.selectOneMessageQueue();
+                    if (notBestBroker != null) {
+                        mq.setBrokerName(notBestBroker);
+                        mq.setQueueId(tpInfo.getSendWhichQueue().incrementAndGet() % writeQueueNums);
+                    }
+                    return mq;
+                } else {
+                    latencyFaultTolerance.remove(notBestBroker);
+                }
+            } catch (Exception e) {
+                log.error("Error occurred when selecting message queue", e);
+            }
+
+            return tpInfo.selectOneMessageQueue();
+        }
+        // 默认情况
+        return tpInfo.selectOneMessageQueue(lastBrokerName);
+    }            
+    
+     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
+        if (lastBrokerName == null) {
+            return selectOneMessageQueue();
+        } else {
+            for (int i = 0; i < this.messageQueueList.size(); i++) {
+                int index = this.sendWhichQueue.incrementAndGet();
+                // 累加 与 队列大小 取余
+                int pos = Math.abs(index) % this.messageQueueList.size();
+                if (pos < 0)
+                    pos = 0;
+                // 获取具体索引的队列    
+                MessageQueue mq = this.messageQueueList.get(pos);
+                if (!mq.getBrokerName().equals(lastBrokerName)) {
+                    return mq;
+                }
+            }
+            return selectOneMessageQueue();
+        }
+    }
+    
+    public MessageQueue selectOneMessageQueue() {
+        // 累加 与 队列大小 取余
+        int index = this.sendWhichQueue.incrementAndGet();
+        int pos = Math.abs(index) % this.messageQueueList.size();
+        if (pos < 0)
+            pos = 0;
+        return this.messageQueueList.get(pos);
+    }
+```
+
 ## NameServer
 
 NameServer是注册中心，类似Zookeeper、Nacos
