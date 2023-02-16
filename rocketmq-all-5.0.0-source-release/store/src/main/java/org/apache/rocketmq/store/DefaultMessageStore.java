@@ -570,7 +570,7 @@ public class DefaultMessageStore implements MessageStore {
         return waitForPutResult(asyncPutMessages(messageExtBatch));
     }
 
-    private PutMessageResult waitForPutResult(CompletableFuture<PutMessageResult> putMessageResultFuture) {
+    private PutMessageResult  waitForPutResult(CompletableFuture<PutMessageResult> putMessageResultFuture) {
         try {
             int putMessageTimeout =
                 Math.max(this.messageStoreConfig.getSyncFlushTimeout(),

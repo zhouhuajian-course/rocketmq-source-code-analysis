@@ -1,5 +1,280 @@
 # RocketMQ 源码分析
 
+## 死信队列
+
+默认重试16次，都失败则写入到死信队列
+
+```text
+  public RemotingCommand sendMessage(final ChannelHandlerContext ctx,
+        final RemotingCommand request,
+        final SendMessageContext sendMessageContext,
+        final SendMessageRequestHeader requestHeader,
+        final TopicQueueMappingContext mappingContext,
+        final SendMessageCallback sendMessageCallback) throws RemotingCommandException {
+        ...
+        // DLQ - 死信队列 ( Dead Letter Queue )
+        if (!handleRetryAndDLQ(requestHeader, response, request, msgInner, topicConfig, oriProps)) {
+            return response;
+        }
+```
+
+## 消息发送/存储 store
+
+```text
+RequestCode.SEND_MESSAGE 
+
+Find Usages...
+
+public SendResult sendMessage(
+        final String addr,
+        final String brokerName,
+        final Message msg,
+        final SendMessageRequestHeader requestHeader,
+        final long timeoutMillis,
+        final CommunicationMode communicationMode,
+        final SendCallback sendCallback,
+        final TopicPublishInfo topicPublishInfo,
+        final MQClientInstance instance,
+        final int retryTimesWhenSendFailed,
+        final SendMessageContext context,
+        final DefaultMQProducerImpl producer
+    ) throws RemotingException, MQBrokerException, InterruptedException {
+                ...
+                request = RemotingCommand.createRequestCommand(RequestCode.SEND_MESSAGE, requestHeader);
+            }
+        }
+        request.setBody(msg.getBody());
+        ...
+        
+        
+// broker
+public RemotingCommand processRequest(ChannelHandlerContext ctx,
+        RemotingCommand request) throws RemotingCommandException {
+        ...
+        switch (request.getCode()) {
+            case RequestCode.CONSUMER_SEND_MSG_BACK:
+                return this.consumerSendMsgBack(ctx, request);
+            default:
+                // 解析请求头
+                SendMessageRequestHeader requestHeader = parseRequestHeader(request);
+               
+
+                RemotingCommand response;
+                
+                if (requestHeader.isBatch()) { // 批量发送
+                    response = this.sendBatchMessage(ctx, request, traceContext, requestHeader, mappingContext,
+                        (ctx1, response1) -> executeSendMessageHookAfter(response1, ctx1));
+                } else { // 单条发送
+                    response = this.sendMessage(ctx, request, traceContext, requestHeader, mappingContext,
+                        (ctx12, response12) -> executeSendMessageHookAfter(response12, ctx12));
+                }
+                // 返回响应
+                return response;
+        }
+        
+        
+public RemotingCommand sendMessage(final ChannelHandlerContext ctx,
+        final RemotingCommand request,
+        final SendMessageContext sendMessageContext,
+        final SendMessageRequestHeader requestHeader,
+        final TopicQueueMappingContext mappingContext,
+        final SendMessageCallback sendMessageCallback) throws RemotingCommandException {
+        ...
+        // 请求体
+        final byte[] body = request.getBody();
+        // 队列ID，由客户端选择
+        int queueIdInt = requestHeader.getQueueId();
+        TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
+        // 如果队列ID小于零，随机选一个队列
+        if (queueIdInt < 0) {
+            queueIdInt = randomQueueId(topicConfig.getWriteQueueNums());
+        }
+
+        // 消息内部
+        MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
+        msgInner.setTopic(requestHeader.getTopic());
+        msgInner.setQueueId(queueIdInt);
+
+        msgInner.setBody(body);
+        msgInner.setFlag(requestHeader.getFlag());
+        ...
+        if (brokerController.getBrokerConfig().isAsyncSendEnable()) {
+            ...
+        } else {
+            PutMessageResult putMessageResult = null;
+            if (sendTransactionPrepareMessage) {
+                putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
+            } else { // 将消息写入磁盘
+                putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
+            ...
+        }
+    } 
+    
+    // PutMessageResult 放消息结果 把消息放到磁盘的结果 同步调用/异步回调
+    protected PutMessageResult encode(MessageExtBrokerInner msgInner) {
+            this.byteBuf.clear();
+            /**
+             * Serialize message  序列化消息
+             */
+            final byte[] propertiesData =
+                msgInner.getPropertiesString() == null ? null : msgInner.getPropertiesString().getBytes(MessageDecoder.CHARSET_UTF8);
+
+            final int propertiesLength = propertiesData == null ? 0 : propertiesData.length;
+
+            if (propertiesLength > Short.MAX_VALUE) {
+                log.warn("putMessage message properties length too long. length={}", propertiesData.length);
+                return new PutMessageResult(PutMessageStatus.PROPERTIES_SIZE_EXCEEDED, null);
+            }
+
+            final byte[] topicData = msgInner.getTopic().getBytes(MessageDecoder.CHARSET_UTF8);
+            final int topicLength = topicData.length;
+
+            final int bodyLength = msgInner.getBody() == null ? 0 : msgInner.getBody().length;
+
+            final int msgLen = calMsgLength(msgInner.getSysFlag(), bodyLength, topicLength, propertiesLength);
+
+            // Exceeds the maximum message body
+            if (bodyLength > this.maxMessageBodySize) {
+                CommitLog.log.warn("message body size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLength
+                    + ", maxMessageSize: " + this.maxMessageBodySize);
+                return new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);
+            }
+
+            final long queueOffset = msgInner.getQueueOffset();
+
+            // Exceeds the maximum message
+            if (msgLen > this.maxMessageSize) {
+                CommitLog.log.warn("message size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLength
+                    + ", maxMessageSize: " + this.maxMessageSize);
+                return new PutMessageResult(PutMessageStatus.MESSAGE_ILLEGAL, null);
+            }
+
+            // 1 TOTALSIZE
+            this.byteBuf.writeInt(msgLen);
+            // 2 MAGICCODE
+            this.byteBuf.writeInt(CommitLog.MESSAGE_MAGIC_CODE);
+            // 3 BODYCRC
+            this.byteBuf.writeInt(msgInner.getBodyCRC());
+            // 4 QUEUEID
+            this.byteBuf.writeInt(msgInner.getQueueId());
+            // 5 FLAG
+            this.byteBuf.writeInt(msgInner.getFlag());
+            // 6 QUEUEOFFSET
+            this.byteBuf.writeLong(queueOffset);
+            // 7 PHYSICALOFFSET, need update later
+            this.byteBuf.writeLong(0);
+            // 8 SYSFLAG
+            this.byteBuf.writeInt(msgInner.getSysFlag());
+            // 9 BORNTIMESTAMP
+            this.byteBuf.writeLong(msgInner.getBornTimestamp());
+
+            // 10 BORNHOST
+            ByteBuffer bornHostBytes = msgInner.getBornHostBytes();
+            this.byteBuf.writeBytes(bornHostBytes.array());
+
+            // 11 STORETIMESTAMP
+            this.byteBuf.writeLong(msgInner.getStoreTimestamp());
+
+            // 12 STOREHOSTADDRESS
+            ByteBuffer storeHostBytes = msgInner.getStoreHostBytes();
+            this.byteBuf.writeBytes(storeHostBytes.array());
+
+            // 13 RECONSUMETIMES
+            this.byteBuf.writeInt(msgInner.getReconsumeTimes());
+            // 14 Prepared Transaction Offset
+            this.byteBuf.writeLong(msgInner.getPreparedTransactionOffset());
+            // 15 BODY
+            this.byteBuf.writeInt(bodyLength);
+            if (bodyLength > 0)
+                this.byteBuf.writeBytes(msgInner.getBody());
+            // 16 TOPIC
+            this.byteBuf.writeByte((byte) topicLength);
+            this.byteBuf.writeBytes(topicData);
+            // 17 PROPERTIES
+            this.byteBuf.writeShort((short) propertiesLength);
+            if (propertiesLength > 0)
+                this.byteBuf.writeBytes(propertiesData);
+
+            return null;
+        }           
+```
+
+## 写消息高可用
+
+如果一个主题的队列是broker-a的q0 q1 q2 q3 和 broker-b的q0 q1 q2 q3，共8个队列，分布在两个broker。  
+因为发消息是轮询的，如果往broker-a的q0发消息失败，那么会将broker-a的所有队列屏蔽一段时间，  
+此时消息会发送给broker-b的q0。屏蔽时间过后，如果还失败，屏蔽时间会递增，但有上限。
+
+```text
+private SendResult sendDefaultImpl(
+        Message msg,
+        final CommunicationMode communicationMode,
+        final SendCallback sendCallback,
+        final long timeout
+    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        this.makeSureStateOK();
+        TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
+        if (topicPublishInfo != null && topicPublishInfo.ok()) {
+            
+            for (; times < timesTotal; times++) {
+                String lastBrokerName = null == mq ? null : mq.getBrokerName();
+                MessageQueue mqSelected = this.selectOneMessageQueue(topicPublishInfo, lastBrokerName);
+                if (mqSelected != null) {
+                    try {
+                        // 发送消息
+                        sendResult = this.sendKernelImpl(msg, mq, communicationMode, sendCallback, topicPublishInfo, timeout - costTime);
+        
+                        ...
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, false);
+                        
+                    } catch (RemotingException e) {  // 发送失败
+                        ...
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, true);
+                    } catch (MQClientException e) {  // 发送失败
+                        ...
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, true);
+                    } catch (MQBrokerException e) {  // 发送失败
+                        ...
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, true);
+                    } catch (InterruptedException e) {  // 发送失败
+                        ...
+                        this.updateFaultItem(mq.getBrokerName(), endTimestamp - beginTimestampPrev, false);
+                    }
+                    ...
+    }
+    
+// MQ故障策略    
+public class MQFaultStrategy {
+    ...
+    private long[] latencyMax = {50L, 100L, 550L, 1000L, 2000L, 3000L, 15000L};
+    private long[] notAvailableDuration = {0L, 0L, 30000L, 60000L, 120000L, 180000L, 600000L};
+    ...
+    
+latency
+noun [ U ]   formal
+UK  /ˈleɪ.tən.si/ US  /ˈleɪ.tən.si/
+ 
+the fact of being present but needing particular conditions to become active, obvious, or completely developed
+潜在因素；潜伏
+The latency period for the cancer is 15 years.
+癌症的潜伏期是十五年。
+They measured the latency of the brain's response to a stimulus.
+他们测量了大脑对刺激做出反应的潜在因素。
+```
+
+## Netty 网络编程框架
+
+https://netty.io/
+
+Netty is an asynchronous event-driven network application framework
+for rapid development of maintainable high performance protocol servers & clients.
+
+使用 NIO 非阻塞IO 高性能的网络编程框架
+
+要实现服务器，方式很多，性能比较差的有，  
+一个请求就开启一个新线程进行处理，这样无法做到高性能，因为开启线程需要资源，线程上下文切换需要耗时，多线程的性能很依赖CPU核数，如果16核CPU，跑16个线程性能最优，适合连接数比较少的情况。  
+另一种是使用线程池，但在阻塞IO的情况下，没有抢到线程的客户端请求会被强制等待或丢弃，适合请求处理时间短，短连接情况，处理完马上断开连接，以处理其他请求。
+
 ## NameServer 无状态
 
 HTTP协议是无状态的，Web服务器不记录和客户端的连接状态，第一次请求处理完，第二次请求再来，不清楚是不是还是原来的客户端。
@@ -761,6 +1036,8 @@ https://rocketmq.apache.org/zh/download#rocketmq-dashboard
 https://rocketmq.apache.org/zh/docs/deploymentOperations/04Dashboard
 
 `mvn spring-boot:run`
+
+推荐使用Jar包的方式启动
 
 ## Java 版本命名
 
