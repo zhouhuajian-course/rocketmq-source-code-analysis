@@ -1,5 +1,75 @@
 # RocketMQ 源码分析
 
+## NameServer 无状态
+
+HTTP协议是无状态的，Web服务器不记录和客户端的连接状态，第一次请求处理完，第二次请求再来，不清楚是不是还是原来的客户端。
+
+业务中使用Session、Cookie、Token等记录的信息，可以使请求有状态，但是这是业务中实现的，并不是HTTP协议实现的
+
+NameServer 无状态，意味着不会记录和客户端请求/连接状态，不清楚请求的发起者是谁，也不记录是谁。
+
+## Linux 环境
+
+```shell
+yum install lrzsz
+rz
+
+https://www.oracle.com/java/technologies/javase/javase8u211-later-archive-downloads.html
+yum install jdk-8u351-linux-x64.rpm
+
+vim /etc/profile
+export JAVA_HOME=/usr/java/jdk1.8.0_351-amd64
+source /etc/profile
+```
+
+## JPS
+
+```shell
+[root@centos /opt/rocketmq/rocketmq-all-5.0.0-bin-release]# jps
+9713 ProxyStartup
+9204 NamesrvStartup
+9758 Jps
+
+```
+
+## SecureCRT参考配置
+
+Theme: Linux
+
+Font: bold 14
+
+## 虚拟机参考配置
+
+vmware  2G 处理器 1 硬盘 20G
+
+## 日志默认存放位置
+
+家目录的logs
+
+~/logs/...
+
+## gRPC 远程服务调用框架/远程过程调用框架
+
+类似Thrift等RPC框架，Thrift最初由Facebook开发，后面变成Apache项目
+
+gRPC 最初由Google开发
+
+不是使用HTTP协议，因为性能相对较差，使用自定义的协议，基于TCP。
+
+输出的是字节流，字节流需要序列化/反序列化，序列化/反序列化使用的不是JSON/XML，因为性能相对较差，使用的是Google开源的Protocol Buffers。
+
+Protocol Buffers 性能比JSON/XML高，压缩率也更大，体积更小，更利于网络传输。
+
+gRPC或者RPC使用的是Client/Server架构。
+
+## 调试启动时修改内存
+
+runserver.sh runbroker.sh
+
+## RocketMQ relative repositories
+
+https://github.com/orgs/apache/repositories?q=rocketmq&type=all&language=&sort=
+
 ## 创建主题 Dashboard
 
 writeQueueNums  16  
@@ -44,9 +114,6 @@ DefaultCluster默认集群名
 ## 消息标签（MessageTag）
 
 消息标签是Apache RocketMQ 提供的细粒度消息分类属性，可以在主题层级之下做消息类型的细分。消费者通过订阅特定的标签来实现细粒度过滤。
-
-主题 一级分类
-标签 二级分类
 
 ## 生成端发送，选择主题里面的队列
 
