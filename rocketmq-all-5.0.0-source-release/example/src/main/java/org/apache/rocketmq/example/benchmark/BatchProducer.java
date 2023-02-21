@@ -53,9 +53,9 @@ import org.apache.rocketmq.srvutil.ServerUtil;
 
 public class BatchProducer {
 
-    private static byte[] msgBody;
+    private static byte[] msgBody;  // 消息内容 静态属性 字节数组
 
-    public static void main(String[] args) throws MQClientException {
+    public static void main(String[] args) throws MQClientException {  // 入口函数
         System.setProperty(RemotingCommand.SERIALIZE_TYPE_PROPERTY, SerializeType.ROCKETMQ.name());
 
         Options options = ServerUtil.buildCommandlineOptions(new Options());

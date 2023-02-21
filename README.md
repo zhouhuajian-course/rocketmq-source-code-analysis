@@ -6,6 +6,293 @@
 
 削峰填谷、异步解耦
 
+（冗余/镜像、分片）
+
+## Netty 异步事件驱动的网络应用程序框架
+
+比Java原生的Socket等，高性能、更方便开发
+
+框架就是有一套框架API，遵循API规范使用即可，避免很多不必要的业务处理
+
+网络连接、断线重连、状态检测、...
+
+编码解码器，处理数据包的粘包/拆包，如果自己处理会比较麻烦，例如数据包还没到齐就处理了，导出错误。
+
+## BrokerContainer
+
+```text
+背景
+在RocketMQ 4.x版本中，一个进程只有一个broker，通常会以主备或者DLedger（Raft）的形式部署，但是一个进程中只有一个broker，而slave一般只承担冷备或热备的作用，节点之间角色的不对等导致slave节点资源没有充分被利用。 因此在RocketMQ 5.x版本中，提供一种新的模式BrokerContainer，在一个BrokerContainer进程中可以加入多个Broker（Master Broker、Slave Broker、DLedger Broker），来提高单个节点的资源利用率，并且可以通过各种形式的交叉部署来实现节点之间的对等部署。 该特性的优点包括：
+
+一个BrokerContainer进程中可以加入多个broker，通过进程内混部来提高单个节点的资源利用率
+通过各种形式的交叉部署来实现节点之间的对等部署，增强单节点的高可用能力
+利用BrokerContainer可以实现单进程内多CommitLog写入，也可以实现单机的多磁盘写入
+BrokerContainer中的CommitLog天然隔离的，不同的CommitLog（broker）可以采取不同作用，比如可以用来比如创建单独的broker做不同TTL的CommitLog。
+```
+
+_来自网络_
+
+## 启动类命名特点
+
+BrokerContainerStartup BrokerStartup ControllerStartup MQAdminStartup NamesrvStartup ProxyStartup
+
+![startup-class-name-rule.png](readme/startup-class-name-rule.png)
+
+startup n. 新兴公司；（动作、过程的）开始，启动
+
+## UMA、NUMA
+
+```text
+NUMA的诞生背景
+在NUMA出现之前，CPU朝着高频率的方向发展遇到了天花板，转而向着多核心的方向发展。
+
+在一开始，内存控制器还在北桥中，所有CPU对内存的访问都要通过北桥来完成。此时所有CPU访问内存都是“一致的”，如下图所示：
+
+UMA
+这样的架构称为UMA(Uniform Memory Access)，直译为“统一内存访问”，这样的架构对软件层面来说非常容易，总线模型保证所有的内存访问是一致的，即每个处理器核心共享相同的内存地址空间。但随着CPU核心数的增加，这样的架构难免遇到问题，比如对总线的带宽带来挑战、访问同一块内存的冲突问题。为了解决这些问题，有人搞出了NUMA。
+
+NUMA构架细节
+NUMA 全称 Non-Uniform Memory Access，译为“非一致性内存访问”。这种构架下，不同的内存器件和CPU核心从属不同的 Node，每个 Node 都有自己的集成内存控制器（IMC，Integrated Memory Controller）。
+
+在 Node 内部，架构类似SMP，使用 IMC Bus 进行不同核心间的通信；不同的 Node 间通过QPI（Quick Path Interconnect）进行通信
+...
+```
+
+_来自网络_
+
+## 看源码技巧
+
++ 看到没看过的类，先看它继承了什么类，实现了那些接口
++ 然后看一遍他的所有属性
++ 然后看一遍他的所有构造方法
++ 其他方法，等具体用到了在具体看
+
+## rocketmq 5.0.0 程序结构
+
+```text
+├─benchmark
+├─bin
+│  ├─controller
+│  └─dledger
+├─conf
+│  ├─2m-2s-async
+│  ├─2m-2s-sync
+│  ├─2m-noslave
+│  ├─container
+│  │  └─2container-2m-2s
+│  ├─controller
+│  │  ├─cluster-3n-independent
+│  │  ├─cluster-3n-namesrv-plugin
+│  │  └─quick-start
+│  └─dledger
+└─lib
+```
+包括文件
+
+```text
+│  LICENSE
+│  NOTICE
+│  README.md
+│
+├─benchmark
+│      batchproducer.sh
+│      consumer.sh
+│      producer.sh
+│      runclass.sh
+│      shutdown.sh
+│      tproducer.sh
+│
+├─bin
+│  │  cachedog.sh
+│  │  cleancache.sh
+│  │  cleancache.v1.sh
+│  │  export.sh
+│  │  mqadmin
+│  │  mqadmin.cmd
+│  │  mqbroker
+│  │  mqbroker.cmd
+│  │  mqbroker.numanode0
+│  │  mqbroker.numanode1
+│  │  mqbroker.numanode2
+│  │  mqbroker.numanode3
+│  │  mqbrokercontainer
+│  │  mqcontroller
+│  │  mqcontroller.cmd
+│  │  mqnamesrv
+│  │  mqnamesrv.cmd
+│  │  mqproxy
+│  │  mqproxy.cmd
+│  │  mqshutdown
+│  │  mqshutdown.cmd
+│  │  os.sh
+│  │  play.cmd
+│  │  play.sh
+│  │  README.md
+│  │  runbroker.cmd
+│  │  runbroker.sh
+│  │  runserver.cmd
+│  │  runserver.sh
+│  │  setcache.sh
+│  │  startfsrv.sh
+│  │  tools.cmd
+│  │  tools.sh
+│  │
+│  ├─controller
+│  │      fast-try-independent-deployment.sh
+│  │      fast-try-namesrv-plugin.sh
+│  │      fast-try.sh
+│  │
+│  └─dledger
+│          fast-try.sh
+│
+├─conf
+│  │  broker.conf
+│  │  logback_broker.xml
+│  │  logback_controller.xml
+│  │  logback_namesrv.xml
+│  │  logback_proxy.xml
+│  │  logback_tools.xml
+│  │  plain_acl.yml
+│  │  rmq-proxy.json
+│  │  tools.yml
+│  │
+│  ├─2m-2s-async
+│  │      broker-a-s.properties
+│  │      broker-a.properties
+│  │      broker-b-s.properties
+│  │      broker-b.properties
+│  │
+│  ├─2m-2s-sync
+│  │      broker-a-s.properties
+│  │      broker-a.properties
+│  │      broker-b-s.properties
+│  │      broker-b.properties
+│  │
+│  ├─2m-noslave
+│  │      broker-a.properties
+│  │      broker-b.properties
+│  │      broker-trace.properties
+│  │
+│  ├─container
+│  │  └─2container-2m-2s
+│  │          broker-a-in-container1.conf
+│  │          broker-a-in-container2.conf
+│  │          broker-b-in-container1.conf
+│  │          broker-b-in-container2.conf
+│  │          broker-container1.conf
+│  │          broker-container2.conf
+│  │          nameserver.conf
+│  │
+│  ├─controller
+│  │  │  controller-standalone.conf
+│  │  │
+│  │  ├─cluster-3n-independent
+│  │  │      controller-n0.conf
+│  │  │      controller-n1.conf
+│  │  │      controller-n2.conf
+│  │  │
+│  │  ├─cluster-3n-namesrv-plugin
+│  │  │      namesrv-n0.conf
+│  │  │      namesrv-n1.conf
+│  │  │      namesrv-n2.conf
+│  │  │
+│  │  └─quick-start
+│  │          broker-n0.conf
+│  │          broker-n1.conf
+│  │          namesrv.conf
+│  │
+│  └─dledger
+│          broker-n0.conf
+│          broker-n1.conf
+│          broker-n2.conf
+│
+└─lib
+        animal-sniffer-annotations-1.19.jar
+        annotations-4.1.1.4.jar
+        annotations-api-6.0.53.jar
+        awaitility-4.1.0.jar
+        bcpkix-jdk15on-1.69.jar
+        bcprov-jdk15on-1.69.jar
+        bcutil-jdk15on-1.69.jar
+        caffeine-2.9.3.jar
+        checker-qual-3.12.0.jar
+        commons-beanutils-1.9.4.jar
+        commons-cli-1.4.jar
+        commons-codec-1.13.jar
+        commons-collections-3.2.2.jar
+        commons-digester-2.1.jar
+        commons-io-2.7.jar
+        commons-lang3-3.12.0.jar
+        commons-logging-1.2.jar
+        commons-validator-1.7.jar
+        concurrentlinkedhashmap-lru-1.4.2.jar
+        disruptor-1.2.10.jar
+        dledger-0.3.1.jar
+        error_prone_annotations-2.10.0.jar
+        failureaccess-1.0.1.jar
+        fastjson-1.2.69_noneautotype.jar
+        grpc-api-1.45.0.jar
+        grpc-context-1.45.0.jar
+        grpc-core-1.45.0.jar
+        grpc-netty-shaded-1.45.0.jar
+        grpc-protobuf-1.45.0.jar
+        grpc-protobuf-lite-1.45.0.jar
+        grpc-services-1.45.0.jar
+        grpc-stub-1.45.0.jar
+        gson-2.8.9.jar
+        guava-31.0.1-jre.jar
+        hamcrest-2.1.jar
+        j2objc-annotations-1.3.jar
+        jaeger-thrift-1.6.0.jar
+        jaeger-tracerresolver-1.6.0.jar
+        javassist-3.20.0-GA.jar
+        javax.annotation-api-1.3.2.jar
+        jna-4.2.2.jar
+        jsr305-3.0.2.jar
+        kotlin-stdlib-common-1.4.0.jar
+        libthrift-0.14.1.jar
+        listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar
+        logback-classic-1.2.10.jar
+        logback-core-1.2.10.jar
+        lz4-java-1.8.0.jar
+        netty-all-4.1.65.Final.jar
+        okhttp-4.9.0.jar
+        okio-2.8.0.jar
+        openmessaging-api-0.3.1-alpha.jar
+        opentracing-noop-0.33.0.jar
+        opentracing-tracerresolver-0.1.8.jar
+        opentracing-util-0.33.0.jar
+        perfmark-api-0.23.0.jar
+        proto-google-common-protos-2.0.1.jar
+        protobuf-java-3.20.1.jar
+        protobuf-java-util-3.20.1.jar
+        rocketmq-acl-5.0.0.jar
+        rocketmq-broker-5.0.0.jar
+        rocketmq-client-5.0.0.jar
+        rocketmq-common-5.0.0.jar
+        rocketmq-container-5.0.0.jar
+        rocketmq-controller-5.0.0.jar
+        rocketmq-example-5.0.0.jar
+        rocketmq-filter-5.0.0.jar
+        rocketmq-logging-5.0.0.jar
+        rocketmq-namesrv-5.0.0.jar
+        rocketmq-openmessaging-5.0.0.jar
+        rocketmq-proto-2.0.0.jar
+        rocketmq-proxy-5.0.0.jar
+        rocketmq-remoting-5.0.0.jar
+        rocketmq-srvutil-5.0.0.jar
+        rocketmq-store-5.0.0.jar
+        rocketmq-tools-5.0.0.jar
+        slf4j-api-1.7.7.jar
+        snakeyaml-1.30.jar
+        tomcat-annotations-api-8.5.46.jar
+        tomcat-embed-core-8.5.46.jar
+        zstd-jni-1.5.2-2.jar
+
+```
+
+## RAID磁盘阵列
+
 ## PageCache页缓存
 
 文件一般存放在硬盘（机械硬盘或固态硬盘）中，CPU 并不能直接访问硬盘中的数据，而是需要先将硬盘中的数据读入到内存中，然后才能被 CPU 访问。
@@ -430,6 +717,10 @@ for rapid development of maintainable high performance protocol servers & client
 要实现服务器，方式很多，性能比较差的有，  
 一个请求就开启一个新线程进行处理，这样无法做到高性能，因为开启线程需要资源，线程上下文切换需要耗时，多线程的性能很依赖CPU核数，如果16核CPU，跑16个线程性能最优，适合连接数比较少的情况。  
 另一种是使用线程池，但在阻塞IO的情况下，没有抢到线程的客户端请求会被强制等待或丢弃，适合请求处理时间短，短连接情况，处理完马上断开连接，以处理其他请求。
+
+selector
+
+IO多路复用 非阻塞 新连接、可读、可写...
 
 ## NameServer 无状态
 
