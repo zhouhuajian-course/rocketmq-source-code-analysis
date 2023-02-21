@@ -24,10 +24,12 @@ error_exit ()
     exit 1
 }
 
+# -e exist 存在为真 !取反
+# -z zero  空为真
 [ ! -e "$JAVA_HOME/bin/java" ] && JAVA_HOME=$HOME/jdk/java
 [ ! -e "$JAVA_HOME/bin/java" ] && JAVA_HOME=/usr/java
 [ ! -e "$JAVA_HOME/bin/java" ] && error_exit "Please set the JAVA_HOME variable in your environment, We need java(x64)!"
-
+# $0 正在执行的脚本路径
 export JAVA_HOME
 export JAVA="$JAVA_HOME/bin/java"
 export BASE_DIR=$(dirname $0)/..
@@ -41,6 +43,7 @@ DIR_SIZE_IN_MB=600
 
 choose_gc_log_directory()
 {
+    # Darwin是Mac操作系统
     case "`uname`" in
         Darwin)
             if [ ! -d "/Volumes/RAMDisk" ]; then
@@ -53,6 +56,7 @@ choose_gc_log_directory()
         ;;
         *)
             # check if /dev/shm exists on other systems
+            # -d directory 是目录且目录存在为真
             if [ -d "/dev/shm" ]; then
                 GC_LOG_DIR="/dev/shm"
             else
@@ -86,5 +90,5 @@ JAVA_OPT="${JAVA_OPT} -XX:-UseLargePages"
 #JAVA_OPT="${JAVA_OPT} -Xdebug -Xrunjdwp:transport=dt_socket,address=9555,server=y,suspend=n"
 JAVA_OPT="${JAVA_OPT} ${JAVA_OPT_EXT}"
 JAVA_OPT="${JAVA_OPT} -cp ${CLASSPATH}"
-
+# $@ 所有命令参数
 $JAVA ${JAVA_OPT} $@

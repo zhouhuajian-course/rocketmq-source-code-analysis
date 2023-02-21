@@ -94,6 +94,8 @@ JAVA_OPT="${JAVA_OPT} ${JAVA_OPT_EXT}"
 JAVA_OPT="${JAVA_OPT} -cp ${CLASSPATH}"
 
 numactl --interleave=all pwd > /dev/null 2>&1
+# $? 上个命令运行结果编码
+# -eq equal 相等为真
 if [ $? -eq 0 ]
 then
 	if [ -z "$RMQ_NUMA_NODE" ] ; then

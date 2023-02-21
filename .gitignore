@@ -2,3 +2,8 @@
 # 忽略编译生成的target目录
 target/
 todo.md
+/netty-test/
+/grpc-test/
+/grpc-proto/
+rocketmq-all-5.0.0-source-release/distribution/bin/bk.log
+rocketmq-all-5.0.0-source-release/distribution/bin/ns.log
