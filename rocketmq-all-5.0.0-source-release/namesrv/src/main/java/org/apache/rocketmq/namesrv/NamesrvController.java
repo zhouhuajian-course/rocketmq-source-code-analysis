@@ -101,17 +101,25 @@ public class NamesrvController {
     }
 
     public boolean initialize() {
+        // 加载配置
         loadConfig();
+        // 初始化网络组件
         initiateNetworkComponents();
+        // 初始化线程执行器
         initiateThreadExecutors();
+        // 注册处理器 请求的处理器
         registerProcessor();
+        // 开始定时任务服务
         startScheduleService();
+        // 初始化Ssl上下文
         initiateSslContext();
+        // 初始化Rpc钩子
         initiateRpcHooks();
         return true;
     }
 
     private void loadConfig() {
+        // 键值对配置管理器 加载
         this.kvConfigManager.load();
     }
 
@@ -132,21 +140,39 @@ public class NamesrvController {
     }
 
     private void initiateNetworkComponents() {
+        // 远程服务端 等于 新的 netty 远程 服务器 netty 服务器配置 broker家保持服务
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
+        // 远程客户端 等于 新的 netty 远程 客户端 netty 客户端配置
         this.remotingClient = new NettyRemotingClient(this.nettyClientConfig);
     }
 
     private void initiateThreadExecutors() {
+        // 默认线程池队列 有链表的阻塞队列 namesrc配置 获取默认线程池队列容量
         this.defaultThreadPoolQueue = new LinkedBlockingQueue<>(this.namesrvConfig.getDefaultThreadPoolQueueCapacity());
-        this.defaultExecutor = new ThreadPoolExecutor(this.namesrvConfig.getDefaultThreadPoolNums(), this.namesrvConfig.getDefaultThreadPoolNums(), 1000 * 60, TimeUnit.MILLISECONDS, this.defaultThreadPoolQueue, new ThreadFactoryImpl("RemotingExecutorThread_")) {
+        // 默认执行器 线程池执行器 namesrc配置 获取默认线程池数量
+        // 核心池数量 最大池数量 保持活跃事件 60秒 事件单位 毫秒
+        this.defaultExecutor = new ThreadPoolExecutor(this.namesrvConfig.getDefaultThreadPoolNums(),
+                                                      this.namesrvConfig.getDefaultThreadPoolNums(),
+                                                      1000 * 60,
+                                                      TimeUnit.MILLISECONDS,
+                                                      this.defaultThreadPoolQueue,
+                                                      new ThreadFactoryImpl("RemotingExecutorThread_")) {
             @Override
             protected <T> RunnableFuture<T> newTaskFor(final Runnable runnable, final T value) {
                 return new FutureTaskExt<>(runnable, value);
             }
         };
-
+        // 客户端请求线程池队列
         this.clientRequestThreadPoolQueue = new LinkedBlockingQueue<>(this.namesrvConfig.getClientRequestThreadPoolQueueCapacity());
-        this.clientRequestExecutor = new ThreadPoolExecutor(this.namesrvConfig.getClientRequestThreadPoolNums(), this.namesrvConfig.getClientRequestThreadPoolNums(), 1000 * 60, TimeUnit.MILLISECONDS, this.clientRequestThreadPoolQueue, new ThreadFactoryImpl("ClientRequestExecutorThread_")) {
+        // Java util 并发 线程池执行器
+        // volatile adjective /ˈvɒl.ə.taɪl/ 不稳定的；易变的；易怒的，喜怒无常的
+        // volatile是Java提供的一种轻量级的同步机制。Java 语言包含两种内在的同步机制：同步块（或方法）和 volatile 变量，相比于synchronized（synchronized通常称为重量级锁），volatile更轻量级，因为它不会引起线程上下文的切换和调度。
+        this.clientRequestExecutor = new ThreadPoolExecutor(this.namesrvConfig.getClientRequestThreadPoolNums(),
+                                                            this.namesrvConfig.getClientRequestThreadPoolNums(),
+                                                            1000 * 60,
+                                                            TimeUnit.MILLISECONDS,
+                                                            this.clientRequestThreadPoolQueue,
+                                                            new ThreadFactoryImpl("ClientRequestExecutorThread_")) {
             @Override
             protected <T> RunnableFuture<T> newTaskFor(final Runnable runnable, final T value) {
                 return new FutureTaskExt<>(runnable, value);
@@ -214,15 +240,20 @@ public class NamesrvController {
     }
 
     private void registerProcessor() {
+        // namesrc配置 是否是集群测试
         if (namesrvConfig.isClusterTest()) {
 
             this.remotingServer.registerDefaultProcessor(new ClusterTestRequestProcessor(this, namesrvConfig.getProductEnvName()), this.defaultExecutor);
         } else {
             // Support get route info only temporarily
             ClientRequestProcessor clientRequestProcessor = new ClientRequestProcessor(this);
-            this.remotingServer.registerProcessor(RequestCode.GET_ROUTEINFO_BY_TOPIC, clientRequestProcessor, this.clientRequestExecutor);
-
-            this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this), this.defaultExecutor);
+            // 远程服务端 注册处理器 请求码 获取路由信息 通过 主题
+            this.remotingServer.registerProcessor(RequestCode.GET_ROUTEINFO_BY_TOPIC,
+                                                  clientRequestProcessor,
+                                                  this.clientRequestExecutor);
+            // 注册默认处理器
+            this.remotingServer.registerDefaultProcessor(new DefaultRequestProcessor(this),
+                                                         this.defaultExecutor);
         }
     }
 

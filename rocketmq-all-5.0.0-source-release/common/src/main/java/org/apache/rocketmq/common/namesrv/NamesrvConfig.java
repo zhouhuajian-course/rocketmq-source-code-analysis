@@ -24,11 +24,16 @@ import java.io.File;
 import org.apache.rocketmq.common.MixAll;
 
 public class NamesrvConfig {
-
+    // 通用 namesrc Namesrc配置 rocketmq家
+    // 系统获取属性 MixAll.ROCKETMQ_HOME_PROPERTY
+    // public static final String ROCKETMQ_HOME_PROPERTY = "rocketmq.home.dir";
+    // 如果设置了rocketmq.home.dir使用这个，如果没有使用默认使用System.getenv(MixAll.ROCKETMQ_HOME_ENV)
+    // 系统 获取环境 ROCKETMQ_HOME
     private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));
     private String kvConfigPath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "kvConfig.json";
     private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
     private String productEnvName = "center";
+    // 集群测试 false
     private boolean clusterTest = false;
     private boolean orderMessageEnable = false;
     private boolean returnOrderTopicConfigToBroker = true;

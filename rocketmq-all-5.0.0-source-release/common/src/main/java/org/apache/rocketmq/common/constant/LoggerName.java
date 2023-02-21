@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.common.constant;
 
+// 通用 常量 日志器名
 public class LoggerName {
     public static final String FILTERSRV_LOGGER_NAME = "RocketmqFiltersrv";
+    // namesrc 日志器名 rocketmqNamesrv
     public static final String NAMESRV_LOGGER_NAME = "RocketmqNamesrv";
     public static final String CONTROLLER_LOGGER_NAME = "RocketmqController";
     public static final String NAMESRV_WATER_MARK_LOGGER_NAME = "RocketmqNamesrvWaterMark";

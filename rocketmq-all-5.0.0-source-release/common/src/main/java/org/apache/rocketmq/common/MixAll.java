@@ -52,6 +52,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 public class MixAll {
+    // 通用 混合所有 ROCKETMQ 家 环境
     public static final String ROCKETMQ_HOME_ENV = "ROCKETMQ_HOME";
     public static final String ROCKETMQ_HOME_PROPERTY = "rocketmq.home.dir";
     public static final String NAMESRV_ADDR_ENV = "NAMESRV_ADDR";
@@ -195,13 +196,17 @@ public class MixAll {
     }
 
     public static String file2String(final File file) throws IOException {
+        // 如果文件存在
         if (file.exists()) {
+            // 字节数组 文件长度
             byte[] data = new byte[(int) file.length()];
             boolean result;
 
             FileInputStream inputStream = null;
             try {
+                // 文件输入流 文件
                 inputStream = new FileInputStream(file);
+                // 输入流 读取 数据
                 int len = inputStream.read(data);
                 result = len == data.length;
             } finally {
@@ -209,11 +214,13 @@ public class MixAll {
                     inputStream.close();
                 }
             }
-
+            // 如果读到数据
             if (result) {
+                // 返回字符串 字符集名 UTF-8
                 return new String(data, "UTF-8");
             }
         }
+        // 返回空
         return null;
     }
 
@@ -241,17 +248,26 @@ public class MixAll {
     }
 
     public static void printObjectProperties(final InternalLogger logger, final Object object) {
+        // 输出对象属性 日志记录器 null 对象 object 只重要字段 false
         printObjectProperties(logger, object, false);
     }
 
-    public static void printObjectProperties(final InternalLogger logger, final Object object,
-        final boolean onlyImportantField) {
+    public static void printObjectProperties(final InternalLogger logger,
+                                             final Object object,
+                                             final boolean onlyImportantField) {
+        // 对象 获取类对象 获取声明的字段
         Field[] fields = object.getClass().getDeclaredFields();
+        // 遍历所有字段
         for (Field field : fields) {
+            // 如果 修饰符 不是静态
             if (!Modifier.isStatic(field.getModifiers())) {
+                // 字段 获取名字
                 String name = field.getName();
+                // 如果 名字 不是以 this开头
                 if (!name.startsWith("this")) {
+                    // 如果 只重要字段
                     if (onlyImportantField) {
+                        // 字段获取注解 重要字段
                         Annotation annotation = field.getAnnotation(ImportantField.class);
                         if (null == annotation) {
                             continue;
@@ -260,15 +276,18 @@ public class MixAll {
 
                     Object value = null;
                     try {
+                        // 字段 设置可访问 true
                         field.setAccessible(true);
+                        // 字段获取 对象
                         value = field.get(object);
+                        // 如果 空 等于 值
                         if (null == value) {
                             value = "";
                         }
-                    } catch (IllegalAccessException e) {
+                    } catch (IllegalAccessException e) { // 非法访问异常
                         log.error("Failed to obtain object properties", e);
                     }
-
+                    // 如果日志记录对象 不等于 空
                     if (logger != null) {
                         logger.info(name + "=" + value);
                     } else {
@@ -331,24 +350,42 @@ public class MixAll {
 
         return properties;
     }
-
+    // 通用 混合所有
     public static void properties2Object(final Properties p, final Object object) {
+        // 对象 获取类对象 获取所有方法
         Method[] methods = object.getClass().getMethods();
+        // 遍历所有方法
         for (Method method : methods) {
+            // 方法名
             String mn = method.getName();
+            // 如果 方法名 以 set开头
             if (mn.startsWith("set")) {
                 try {
+                    // 方法名 子字符串 开始索引 4
+                    //      01234
+                    // mn = setConfigStorePath
+                    // tmp = onfigStorePath
+                    // first = C
                     String tmp = mn.substring(4);
                     String first = mn.substring(3, 4);
-
+                    // 第一个字符转小写 加上 后面字符
+                    // 键 = configStorePath
                     String key = first.toLowerCase() + tmp;
+                    // 属性 获取属性 键
                     String property = p.getProperty(key);
+                    // 如果属性不为空
                     if (property != null) {
+                        // 方法 获取参数类型
                         Class<?>[] pt = method.getParameterTypes();
+                        // 参数类型不为空 并且 参数类型长度大于0
                         if (pt != null && pt.length > 0) {
+                            // 参数类型 0 获取简单名字
                             String cn = pt[0].getSimpleName();
+                            // 参数
                             Object arg = null;
+                            // 参数类型名字 等于 int 或者 等于 Integer
                             if (cn.equals("int") || cn.equals("Integer")) {
+                                // 整型 解析整数
                                 arg = Integer.parseInt(property);
                             } else if (cn.equals("long") || cn.equals("Long")) {
                                 arg = Long.parseLong(property);
@@ -363,10 +400,11 @@ public class MixAll {
                             } else {
                                 continue;
                             }
+                            // 方法调用 对象 参数
                             method.invoke(object, arg);
                         }
                     }
-                } catch (Throwable ignored) {
+                } catch (Throwable ignored) {  // 出现异常 不处理
                 }
             }
         }

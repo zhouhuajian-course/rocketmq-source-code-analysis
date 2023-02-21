@@ -39,9 +39,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
+// 远程 协议 远程命令
 public class RemotingCommand {
     public static final String SERIALIZE_TYPE_PROPERTY = "rocketmq.serialize.type";
     public static final String SERIALIZE_TYPE_ENV = "ROCKETMQ_SERIALIZE_TYPE";
+    // 远程版本键
     public static final String REMOTING_VERSION_KEY = "rocketmq.remoting.version";
     static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
     private static final int RPC_TYPE = 0; // 0, REQUEST_COMMAND
@@ -63,7 +65,7 @@ public class RemotingCommand {
     private static final String BOOLEAN_CANONICAL_NAME_2 = boolean.class.getCanonicalName();
     private static volatile int configVersion = -1;
     private static AtomicInteger requestId = new AtomicInteger(0);
-
+    // 远程 协议 远程命令 序列化类型配置 序列化类型 JSON
     private static SerializeType serializeTypeConfigInThisServer = SerializeType.JSON;
 
     static {

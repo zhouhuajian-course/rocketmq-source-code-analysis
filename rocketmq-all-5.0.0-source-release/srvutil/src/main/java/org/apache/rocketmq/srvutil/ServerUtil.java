@@ -24,38 +24,52 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
+// 服务端工具 服务端工具
 public class ServerUtil {
 
     public static Options buildCommandlineOptions(final Options options) {
+        // 选项 h 长选项 help 有参数 false 描述 输出帮助
         Option opt = new Option("h", "help", false, "Print help");
+        // 选项 设置必须 false
         opt.setRequired(false);
+        // options 添加选项 opt
         options.addOption(opt);
-
+        // 选项 n 长选项 namesrcAddr 有参数 true 描述 name server 地址列表 例如
         opt =
             new Option("n", "namesrvAddr", true,
                 "Name server address list, eg: '192.168.0.1:9876;192.168.0.2:9876'");
         opt.setRequired(false);
         options.addOption(opt);
-
+        // 返回选项
         return options;
     }
 
-    public static CommandLine parseCmdLine(final String appName, String[] args, Options options,
-        CommandLineParser parser) {
+    // 服务端工具 服务端工具 解析命令行
+    public static CommandLine parseCmdLine(final String appName,
+                                           String[] args,
+                                           Options options,
+                                           CommandLineParser parser) {
+        // commons 通用 cli 命令行 HelpFormatter
         HelpFormatter hf = new HelpFormatter();
         hf.setWidth(110);
         CommandLine commandLine = null;
         try {
+            // 解析器 解析 选项 参数
             commandLine = parser.parse(options, args);
+            // 如果 命令行 有选项 h
             if (commandLine.hasOption('h')) {
+                // 帮助格式器 输出帮助
                 hf.printHelp(appName, options, true);
+                // 系统退出 状态码0
                 System.exit(0);
             }
         } catch (ParseException e) {
+            // 出现解析异常，输出帮助
             hf.printHelp(appName, options, true);
+            // 系统退出 状态码1
             System.exit(1);
         }
-
+        // 返回命令行实例 commons cli CommandLine
         return commandLine;
     }
 

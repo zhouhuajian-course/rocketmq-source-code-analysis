@@ -16,8 +16,12 @@
  */
 package org.apache.rocketmq.common;
 
+// 通用 MQ版本
 public class MQVersion {
-
+    // Version 枚举
+    // ordinal noun [ C ]
+    // UK  /ˈɔː.dɪ.nəl/ a number such as 1st, 2nd, 3rd, 4th, that shows the position of something in a list of things
+    // 序数词
     public static final int CURRENT_VERSION = Version.V5_0_0.ordinal();
 
     public static String getVersionDesc(int value) {
