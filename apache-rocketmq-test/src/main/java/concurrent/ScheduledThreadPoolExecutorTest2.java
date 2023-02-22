@@ -6,7 +6,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
-public class ScheduledThreadPoolExecutorTest {
+public class ScheduledThreadPoolExecutorTest2 {
     public static void main(String[] args) {
         ScheduledThreadPoolExecutor scheduledThreadPoolExecutor = new ScheduledThreadPoolExecutor(2);
         Runnable runnable =  () -> {
@@ -17,6 +17,15 @@ public class ScheduledThreadPoolExecutorTest {
                 throw new RuntimeException(e);
             }
             log.info("task ended");
+        };
+        Runnable runnable2 =  () -> {
+            log.info("task2 started");
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            log.info("task2 ended");
         };
         /**
          * 创建并执行一个周期性动作，
@@ -32,6 +41,7 @@ public class ScheduledThreadPoolExecutorTest {
          */
         log.info("scheduleAtFixedRate called");
         scheduledThreadPoolExecutor.scheduleAtFixedRate(runnable, 1, 10, TimeUnit.SECONDS);
+        scheduledThreadPoolExecutor.scheduleAtFixedRate(runnable2, 1, 10, TimeUnit.SECONDS);
         /**
          * // 26秒 调用scheduleAtFixedRate
          * 10:50:26.648 [main] INFO concurrent.ScheduledThreadPoolExecutorTest - scheduleAtFixedRate called
