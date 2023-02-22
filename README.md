@@ -1,5 +1,27 @@
 # RocketMQ 源码分析
 
+## 消息生产过程
+
+1. 生产者 向 namesrv 获取 Topic 的路由表和Broker表 (生产者会每隔30秒向namesrc获取这些信息，并保存在堆区，如果发具体Topic消息，没有路由，则会向namesrc获取特定主题的路由)
+2. 生产者 通过 队列选择算法 选择一个队列，并发送。
+
+Topic路由表 是 Map，Key是TopicName，Value是QueueData列表，每个QueueData是当前主题每个Broker中的所有队列。
+例如Broker-a有主题TopicTest四个队列，Broker-b有主题TopicTest四个队列，
+那么TopicTest对应的QueueData列表有两个QueueData实例，第一个QueueData实例记录Broker-a里面的TopicTest四个队列，第二个QueueData实例记录Broker-b里面的TopicTest四个队列。
+当然每个QueueData会记录BrokerName
+
+Broker表，是Map，Key是BrokerName，Value是BrokerData，例如有Broker-a是一个小主从集群，有两个Broker BrokerId分别为0 1，
+Broker-b也是一个小主从集群，有两个Broker BrokerId分别为 0 1
+那么 Key Bronker-a对应的BrokerData有两个Broker，又是一个Map，Key是BrokerId 0，Value是Broker地址。
+
+通过 Topic路由表 能确定往那个Broker的那个队列里面发消息，但不知道那个Broker地址是啥，所以再通过Broker表，获取Broker的Master地址。
+
+队列选择算法 
+
+1. 轮询算法
+2. 最小延迟算法
+3. ...
+
 ## IP地址掩码以及192.168.1.1/24 /16 /8
 
 ```text
