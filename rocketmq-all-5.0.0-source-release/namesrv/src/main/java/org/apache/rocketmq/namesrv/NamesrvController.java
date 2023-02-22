@@ -109,9 +109,10 @@ public class NamesrvController {
         initiateThreadExecutors();
         // 注册处理器 请求的处理器
         registerProcessor();
-        // 开始定时任务服务
+        // 开始调度任务服务
         startScheduleService();
         // 初始化Ssl上下文
+        // SSL（Secure Socket Layer）安全套接层是Netscape公司率先采用的网络安全协议。它是在传输通信协议（TCP/IP）上实现的一种安全协议，采用公开密钥技术。SSL广泛支持各种类型的网络，同时提供三种基本的安全服务，它们都使用公开密钥技术。
         initiateSslContext();
         // 初始化Rpc钩子
         initiateRpcHooks();
@@ -124,12 +125,22 @@ public class NamesrvController {
     }
 
     private void startScheduleService() {
+        // 扫描执行器服务 调度任务 固定频率
+        // 任务 namesrc控制器 路由信息管理器 扫描不活跃broker 即下线的Broker
+        // 延迟5秒后第一次执行
+        // 以后每5秒执行扫描不活跃Broker
+        // 时间单位 毫秒
+        // 具体Broker的信息，每个Broker会定期向Namesrc汇报，不是Namesrc主动去拉取Broker信息
         this.scanExecutorService.scheduleAtFixedRate(NamesrvController.this.routeInfoManager::scanNotActiveBroker,
-            5, this.namesrvConfig.getScanNotActiveBrokerInterval(), TimeUnit.MILLISECONDS);
-
+                                                     5,
+                                                     this.namesrvConfig.getScanNotActiveBrokerInterval(),
+                                                     TimeUnit.MILLISECONDS);
+        // 能调度的执行器服务 输出所有配置周期性 kvConfigManger
+        // 延迟1分钟后第一次执行，以后每10分钟执行一次
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.kvConfigManager::printAllPeriodically,
             1, 10, TimeUnit.MINUTES);
-
+        // NamesrvController 输出水印/水位标记
+        // 延迟10秒后第一次执行 以后每1秒执行一次
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 NamesrvController.this.printWaterMark();
@@ -218,7 +229,13 @@ public class NamesrvController {
     }
 
     private void printWaterMark() {
-        WATER_MARK_LOG.info("[WATERMARK] ClientQueueSize:{} ClientQueueSlowTime:{} " + "DefaultQueueSize:{} DefaultQueueSlowTime:{}", this.clientRequestThreadPoolQueue.size(), headSlowTimeMills(this.clientRequestThreadPoolQueue), this.defaultThreadPoolQueue.size(), headSlowTimeMills(this.defaultThreadPoolQueue));
+        // [水印/水位标记] a mark showing the highest or lowest level that a river or the sea reaches
+        // 客户端队列大小 客户端队列慢时间 默认对垒大小 默认队列慢时间
+        WATER_MARK_LOG.info("[WATERMARK] ClientQueueSize:{} ClientQueueSlowTime:{} " + "DefaultQueueSize:{} DefaultQueueSlowTime:{}",
+                            this.clientRequestThreadPoolQueue.size(),
+                            headSlowTimeMills(this.clientRequestThreadPoolQueue),
+                            this.defaultThreadPoolQueue.size(),
+                            headSlowTimeMills(this.defaultThreadPoolQueue));
     }
 
     private long headSlowTimeMills(BlockingQueue<Runnable> q) {
@@ -258,25 +275,36 @@ public class NamesrvController {
     }
 
     private void initiateRpcHooks() {
+        // 区域路由RPC钩子
         this.remotingServer.registerRPCHook(new ZoneRouteRPCHook());
     }
 
     public void start() throws Exception {
+        // 远程服务器 开始
         this.remotingServer.start();
 
         // In test scenarios where it is up to OS to pick up an available port, set the listening port back to config
+        // 在由OS选择可用端口的测试场景中，将侦听端口设置回config
+        // bindAddress="0.0.0.0"
+        // listenPort=9876
         if (0 == nettyServerConfig.getListenPort()) {
             nettyServerConfig.setListenPort(this.remotingServer.localListenPort());
         }
-
+        // 远程客户端 更新NameServer地址列表
+        // NettyRemotingClient
+        // namesrvAddrList = [192.168.1.103:9876]
+        // 远程工具 获取本机地址
         this.remotingClient.updateNameServerAddressList(Collections.singletonList(RemotingUtil.getLocalAddress()
             + ":" + nettyServerConfig.getListenPort()));
+        // 远程客户端 启动
         this.remotingClient.start();
-
+        // 如果文件 监控 服务 不为空
+        // 备注：实际有启动
         if (this.fileWatchService != null) {
+            // 文件 监控 服务 启动
             this.fileWatchService.start();
         }
-
+        // 路由信息管理器 启动
         this.routeInfoManager.start();
     }
 

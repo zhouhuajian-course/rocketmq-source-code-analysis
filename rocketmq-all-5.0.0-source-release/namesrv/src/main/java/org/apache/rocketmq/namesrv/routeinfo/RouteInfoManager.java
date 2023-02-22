@@ -764,11 +764,14 @@ public class RouteInfoManager {
 
         return null;
     }
-
+    // namesrv 路由信息 路由信息管理器
     public void scanNotActiveBroker() {
         try {
+            // 日志 信息 开始 扫描
             log.info("start scanNotActiveBroker");
+            // broker 活着的 表
             for (Entry<BrokerAddrInfo, BrokerLiveInfo> next : this.brokerLiveTable.entrySet()) {
+                // Key BrokerAddrInfo Value BrokerLiveInfo
                 long last = next.getValue().getLastUpdateTimestamp();
                 long timeoutMillis = next.getValue().getHeartbeatTimeoutMillis();
                 if ((last + timeoutMillis) < System.currentTimeMillis()) {

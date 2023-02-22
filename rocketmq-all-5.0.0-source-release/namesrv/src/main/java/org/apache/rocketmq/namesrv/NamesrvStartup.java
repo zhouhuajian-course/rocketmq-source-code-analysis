@@ -59,7 +59,7 @@ public class NamesrvStartup {
 
     public static void main(String[] args) {
         main0(args);
-        // 控制器管理者
+        // 控制器管理者 主函数
         controllerManagerMain();
     }
 
@@ -80,6 +80,7 @@ public class NamesrvStartup {
 
     public static void controllerManagerMain() {
         try {
+            // namesrc配置 是否开启控制器 在 namesrc里面 默认false
             if (namesrvConfig.isEnableControllerInNamesrv()) {
                 createAndStartControllerManager();
             }
@@ -219,24 +220,31 @@ public class NamesrvStartup {
         }
         // 控制器 初始化
         boolean initResult = controller.initialize();
+        // 初始化结果
         if (!initResult) {
+            // 控制器 关闭
             controller.shutdown();
+            // 系统退出 状态码 -3
             System.exit(-3);
         }
-
+        // 运行 获取运行 添加关闭钩子
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, (Callable<Void>) () -> {
+            // 控制器 关闭
             controller.shutdown();
             return null;
         }));
-
+        // 控制器启动
         controller.start();
 
         return controller;
     }
 
     public static void createAndStartControllerManager() throws Exception {
+        // 创建控制器管理器
         ControllerManager controllerManager = createControllerManager();
+        // 启动控制器管理器
         start(controllerManager);
+        // 控制器管理器 启动成功
         String tip = "The ControllerManager boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
         log.info(tip);
         System.out.printf("%s%n", tip);

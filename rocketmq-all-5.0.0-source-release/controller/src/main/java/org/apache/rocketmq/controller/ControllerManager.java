@@ -96,6 +96,7 @@ public class ControllerManager {
         if (StringUtils.isEmpty(this.controllerConfig.getControllerDLegerSelfId())) {
             throw new IllegalArgumentException("Attribute value controllerDLegerSelfId of ControllerConfig is null or empty");
         }
+        // DLedger Dledger-RocketMQ 基于Raft协议的commitlog存储库
         this.controller = new DLedgerController(this.controllerConfig, this.heartbeatManager::isBrokerActive,
                 this.nettyServerConfig, this.nettyClientConfig, this.brokerHousekeepingService,
                 new DefaultElectPolicy(this.heartbeatManager::isBrokerActive, this.heartbeatManager::getBrokerLiveInfo));
