@@ -1,5 +1,35 @@
 # RocketMQ 源码分析
 
+## 留意现象
+
+运行 NamesrvStartup，运行 RMQ Dashboard，再运行不指定NameServer地址的BrokerStartup，Dashboard大多数数据为空
+
+![broker-namesrv_addr.png](readme/broker-namesrv_addr.png)
+
+两种方式指定 namesrv_addr
+
+对比没有namesrv_addr和有
+
+The broker[..., 192.168.1.103:10911] boot success. serializeType=JSON
+The broker[..., 192.168.1.103:10911] boot success. serializeType=JSON and name server is localhost:9876
+
+## Spring Boot Maven Plugin 仓库
+
+https://github.com/spring-projects/spring-boot/tree/main/spring-boot-project/spring-boot-tools/spring-boot-maven-plugin
+
+## 消息类型
+
+定义：主题所支持的消息类型。
+
+取值：创建主题时选择消息类型。Apache RocketMQ 支持的主题类型如下：
+
+1. Normal：普通消息，消息本身无特殊语义，消息之间也没有任何关联。 （无序）
+2. FIFO：顺序消息，Apache RocketMQ 通过消息分组MessageGroup标记一组特定消息的先后顺序，可以保证消息的投递顺序严格按照消息发送时的顺序。
+3. Delay：定时/延时消息，通过指定延时时间控制消息生产后不要立即投递，而是在延时间隔后才对消费者可见。
+4. Transaction：事务消息，Apache RocketMQ 支持分布式事务消息，支持应用数据库更新和消息调用的事务一致性保障。
+
+约束：每个主题只支持一种消息类型。
+
 ## Namesrv
 
 ```shell
