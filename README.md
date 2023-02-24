@@ -1,5 +1,42 @@
 # RocketMQ 源码分析
 
+## RocketMQ Proxy 处理请求
+
+RocketMQ Proxy处理请求主要分为两步。
+• 第一步， 客户端通过grpc协议访问RocketMQ Proxy。这个是由既定的协议确认的, 接口定义在 
+  https://github.com/apache/rocketmq-apis/tree/main/apache/rocketmq/v2
+• 第二步，Proxy内部封装调用。从GrpcMessagingApplication到XXXXX Service。这里面是典型的接口实现方式，代码也非常简单。
+• 第三步，XXXXX Service调用Broker。
+• 如果Proxy启动Local模式， 则是通过BrokerController对象调用Broker的方法实现发送、消费等业务；
+• 如果Proxy启动Cluster模式，则是通过RemotingClient访问Broker实现发送、消费等业务。
+
+_from internet_
+
+## RocketMQ Proxy
+
+![rmq-proxy.png](readme/rmq-proxy.png)
+
+RocketMQ Proxy是一个RocketMQ Broker的代理服务，支持客户端用GRPC协议访问Broker。
+RocketMQ Proxy主要解决了4.9.X版本客户端多语言客户端
+（c/c++, golang, csharp,rust,python, nodejs）
+实现Remoting协议难度大、复杂、功能不一致、维护工作大的问题。
+RocketMQ Proxy使用业界熟悉的GRPC协议， 各个语言代码统一、简单，使得多语言使用RocketMQ更方便、容易。
+
+启动一个RocketMQ Proxy。
+sh bin/mqbroker -n localhost:9876 --enable-proxy
+启动了一个Namesrv、一个Proxy、一个Dashboard
+启动后，没有Broker进程， 但是有一个Broker可以注册到Namesrv:
+
+启动入口类是 : org.apache.rocketmq.proxy.ProxyStartup
+• 初始化命令行参数。将命令行参数转化为配置对象，包含Proxy配置、环境变量、日志配置、延迟级别配置。
+• 初始化GRPC Server线程池和线程池监控。
+• 初始化一个业务处理器、GRPC Server，并添加到PROXY_START_AND_SHUTDOWN列表中统一管理。 
+  如果是本地模式，这里面会引用Broker模块，使用BrokerStartup启动一个内嵌Broker。（Proxy和Broker同进程)。
+
+MessagingProcessor就是一个处理器接口，里面定义了Pop消息方法、发送消息方法等
+
+_from internet_
+
 ## broker proxy
 
 grpc server
