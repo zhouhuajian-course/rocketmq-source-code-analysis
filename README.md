@@ -1,5 +1,62 @@
 # RocketMQ 源码分析
 
+## broker proxy
+
+grpc server
+
+![grpc-server.png](readme/grpc-server.png)
+
+org.apache.rocketmq.broker.BrokerStartup.createBrokerController
+
+![broker-BrokerStartup-createBrokerController.png](readme/broker-BrokerStartup-createBrokerController.png)
+
+```text
+    public static void main(String[] args) {
+        try {
+            // parse argument from command line
+            CommandLineArgument commandLineArgument = parseCommandLineArgument(args);
+            initLogAndConfiguration(commandLineArgument);
+
+            // init thread pool monitor for proxy.
+            initThreadPoolMonitor();
+
+            ThreadPoolExecutor executor = createServerExecutor();
+
+            MessagingProcessor messagingProcessor = createMessagingProcessor();
+
+            // create grpcServer
+            GrpcServer grpcServer = GrpcServerBuilder.newBuilder(executor, ConfigurationManager.getProxyConfig().getGrpcServerPort())
+                .addService(createServiceProcessor(messagingProcessor))
+                .addService(ChannelzService.newInstance(100))
+                .addService(ProtoReflectionService.newInstance())
+                .configInterceptor()
+                .build();
+            PROXY_START_AND_SHUTDOWN.appendStartAndShutdown(grpcServer);
+
+            // start servers one by one.
+            PROXY_START_AND_SHUTDOWN.start();
+
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                log.info("try to shutdown server");
+                try {
+                    PROXY_START_AND_SHUTDOWN.shutdown();
+                } catch (Exception e) {
+                    log.error("err when shutdown rocketmq-proxy", e);
+                }
+            }));
+        } catch (Exception e) {
+            System.err.println("find an unexpect err." + e);
+            e.printStackTrace();
+            log.error("find an unexpect err.", e);
+            System.exit(1);
+        }
+
+        System.out.printf("%s%n", new Date() + " rocketmq-proxy startup successfully");
+        log.info(new Date() + " rocketmq-proxy startup successfully");
+    }
+
+```
+
 ## broker route register
 
 实际路由注册 org.apache.rocketmq.broker.out.BrokerOuterAPI#registerBrokerAll

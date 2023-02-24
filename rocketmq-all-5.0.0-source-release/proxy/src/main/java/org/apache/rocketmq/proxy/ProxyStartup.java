@@ -168,6 +168,7 @@ public class ProxyStartup {
         if (ProxyMode.isClusterMode(proxyModeStr)) {
             messagingProcessor = DefaultMessagingProcessor.createForClusterMode();
         } else if (ProxyMode.isLocalMode(proxyModeStr)) {
+            // create broker controller
             BrokerController brokerController = createBrokerController();
             StartAndShutdown brokerControllerWrapper = new StartAndShutdown() {
                 @Override
@@ -209,6 +210,7 @@ public class ProxyStartup {
             brokerStartupArgList.add(config.getNamesrvAddr());
         }
         String[] brokerStartupArgs = brokerStartupArgList.toArray(new String[0]);
+        // create broker controller
         return BrokerStartup.createBrokerController(brokerStartupArgs);
     }
 
