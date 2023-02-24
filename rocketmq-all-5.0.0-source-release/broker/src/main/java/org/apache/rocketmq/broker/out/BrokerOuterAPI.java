@@ -443,7 +443,7 @@ public class BrokerOuterAPI {
         final List<RegisterBrokerResult> registerBrokerResultList = new CopyOnWriteArrayList<>();
         List<String> nameServerAddressList = this.remotingClient.getAvailableNameSrvList();
         if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
-
+            // header
             final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
             requestHeader.setBrokerAddr(brokerAddr);
             requestHeader.setBrokerId(brokerId);
@@ -455,7 +455,7 @@ public class BrokerOuterAPI {
             if (heartbeatTimeoutMillis != null) {
                 requestHeader.setHeartbeatTimeoutMillis(heartbeatTimeoutMillis);
             }
-
+            // body
             RegisterBrokerBody requestBody = new RegisterBrokerBody();
             requestBody.setTopicConfigSerializeWrapper(TopicConfigAndMappingSerializeWrapper.from(topicConfigWrapper));
             requestBody.setFilterServerList(filterServerList);
@@ -463,6 +463,7 @@ public class BrokerOuterAPI {
             final int bodyCrc32 = UtilAll.crc32(body);
             requestHeader.setBodyCrc32(bodyCrc32);
             final CountDownLatch countDownLatch = new CountDownLatch(nameServerAddressList.size());
+            // for namesrv addr: name server address list
             for (final String namesrvAddr : nameServerAddressList) {
                 brokerOuterExecutor.execute(new AbstractBrokerRunnable(brokerIdentity) {
                     @Override

@@ -293,6 +293,7 @@ public class BrokerController {
         this.setStoreHost(new InetSocketAddress(this.getBrokerConfig().getBrokerIP1(), getListenPort()));
         this.brokerStatsManager = messageStoreConfig.isEnableLmq() ? new LmqBrokerStatsManager(this.brokerConfig.getBrokerClusterName(), this.brokerConfig.isEnableDetailStat()) : new BrokerStatsManager(this.brokerConfig.getBrokerClusterName(), this.brokerConfig.isEnableDetailStat());
         this.consumerOffsetManager = messageStoreConfig.isEnableLmq() ? new LmqConsumerOffsetManager(this) : new ConsumerOffsetManager(this);
+        // message store config is enable light mq default false
         this.topicConfigManager = messageStoreConfig.isEnableLmq() ? new LmqTopicConfigManager(this) : new TopicConfigManager(this);
         this.topicQueueMappingManager = new TopicQueueMappingManager(this);
         this.pullMessageProcessor = new PullMessageProcessor(this);
@@ -415,13 +416,13 @@ public class BrokerController {
     protected void initializeRemotingServer() throws CloneNotSupportedException {
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);
         NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();
-
+        // neety server config get listen port -2
         int listeningPort = nettyServerConfig.getListenPort() - 2;
         if (listeningPort < 0) {
             listeningPort = 0;
         }
         fastConfig.setListenPort(listeningPort);
-
+        // fast remoting server
         this.fastRemotingServer = new NettyRemotingServer(fastConfig, this.clientHousekeepingService);
     }
 
@@ -545,12 +546,17 @@ public class BrokerController {
     }
 
     protected void initializeBrokerScheduledTasks() {
+        // initial delay 46020719
+        // 00:00:00
         final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();
+        // period        86400000
         final long period = TimeUnit.DAYS.toMillis(1);
+        //
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 try {
+                    // broker stats record every day
                     BrokerController.this.getBrokerStats().record();
                 } catch (Throwable e) {
                     LOG.error("BrokerController: failed to record broker stats", e);
@@ -558,6 +564,10 @@ public class BrokerController {
             }
         }, initialDelay, period, TimeUnit.MILLISECONDS);
 
+        // consumer offset persist
+        // 10s first call
+        // 5s after second call
+        // ...
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -569,7 +579,9 @@ public class BrokerController {
                 }
             }
         }, 1000 * 10, this.brokerConfig.getFlushConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
-
+        // 10s
+        // consumer filter persist
+        // consumer order info persist
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -583,7 +595,7 @@ public class BrokerController {
                 }
             }
         }, 1000 * 10, 1000 * 10, TimeUnit.MILLISECONDS);
-
+        // protect broker
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -594,7 +606,7 @@ public class BrokerController {
                 }
             }
         }, 3, 3, TimeUnit.MINUTES);
-
+        // print water mark
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -627,17 +639,21 @@ public class BrokerController {
                 } else {
                     this.updateMasterHAServerAddrPeriodically = true;
                 }
-
+                // 10s init delay
+                // 3s
                 this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
                     @Override
                     public void run() {
                         try {
+                            // last sync time > 60
                             if (System.currentTimeMillis() - lastSyncTimeMs > 60 * 1000) {
+                                // sync all
                                 BrokerController.this.getSlaveSynchronize().syncAll();
                                 lastSyncTimeMs = System.currentTimeMillis();
                             }
                             //timer checkpoint, latency-sensitive, so sync it more frequently
+                            // sync it more frequently
                             BrokerController.this.getSlaveSynchronize().syncTimerCheckPoint();
                         } catch (Throwable e) {
                             LOG.error("Failed to sync all config for slave.", e);
@@ -668,7 +684,7 @@ public class BrokerController {
     protected void initializeScheduledTasks() {
 
         initializeBrokerScheduledTasks();
-
+        // refresh meta data
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -679,11 +695,12 @@ public class BrokerController {
                 }
             }
         }, 10, 5, TimeUnit.SECONDS);
-
+        //
         if (this.brokerConfig.getNamesrvAddr() != null) {
             this.brokerOuterAPI.updateNameServerAddressList(this.brokerConfig.getNamesrvAddr());
             LOG.info("Set user specified name server address: {}", this.brokerConfig.getNamesrvAddr());
             // also auto update namesrv if specify
+            // 10s init delay first call
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
@@ -708,27 +725,42 @@ public class BrokerController {
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
     }
-
+    // broker BrokerController initialize throws clone not supported exception
     public boolean initialize() throws CloneNotSupportedException {
-
+        // boolean result = this topic config manager load
+        // topic 配置 管理器 加载
+        // 重启 broker时 加载 store config ...
         boolean result = this.topicConfigManager.load();
+        // topic queue mapping manager
         result = result && this.topicQueueMappingManager.load();
+        // consumer offset manager
         result = result && this.consumerOffsetManager.load();
+        // subscription  group manager
         result = result && this.subscriptionGroupManager.load();
+        // consumer filter manager
         result = result && this.consumerFilterManager.load();
+        // consumer order info manager
         result = result && this.consumerOrderInfoManager.load();
-
+        // result
         if (result) {
             try {
-                DefaultMessageStore defaultMessageStore = new DefaultMessageStore(this.messageStoreConfig, this.brokerStatsManager, this.messageArrivingListener, this.brokerConfig);
+                // 默认 消息 存储
+                // 消息存储配置 broker状态管理器 消息到达监听器 broker配置
+                DefaultMessageStore defaultMessageStore = new DefaultMessageStore(this.messageStoreConfig,
+                                                                                  this.brokerStatsManager,
+                                                                                  this.messageArrivingListener,
+                                                                                  this.brokerConfig);
+                // 默认消息存储 设置主题配置表
                 defaultMessageStore.setTopicConfigTable(topicConfigManager.getTopicConfigTable());
-
+                // 消息存储配置 是否启用DLeger提交日志
                 if (messageStoreConfig.isEnableDLegerCommitLog()) {
                     DLedgerRoleChangeHandler roleChangeHandler = new DLedgerRoleChangeHandler(this, defaultMessageStore);
                     ((DLedgerCommitLog) defaultMessageStore.getCommitLog()).getdLedgerServer().getdLedgerLeaderElector().addRoleChangeHandler(roleChangeHandler);
                 }
+                // broker stats
                 this.brokerStats = new BrokerStats(defaultMessageStore);
                 //load plugin
+                // 消息存储插件上下文
                 MessageStorePluginContext context = new MessageStorePluginContext(this, messageStoreConfig, brokerStatsManager, messageArrivingListener);
                 this.messageStore = MessageStoreFactory.build(context, defaultMessageStore);
                 this.messageStore.getDispatcherList().addFirst(new CommitLogDispatcherCalcBitMap(this.brokerConfig, this.consumerFilterManager));
@@ -750,7 +782,7 @@ public class BrokerController {
         if (messageStore != null) {
             registerMessageStoreHook();
         }
-
+        //  message store 加载
         result = result && this.messageStore.load();
 
         if (messageStoreConfig.isTimerWheelEnable()) {
@@ -759,7 +791,7 @@ public class BrokerController {
 
         //scheduleMessageService load after messageStore load success
         result = result && this.scheduleMessageService.load();
-
+        // broker attached plugin
         for (BrokerAttachedPlugin brokerAttachedPlugin : brokerAttachedPlugins) {
             if (brokerAttachedPlugin != null) {
                 result = result && brokerAttachedPlugin.load();
@@ -767,13 +799,13 @@ public class BrokerController {
         }
 
         if (result) {
-
+            // init remoting server
             initializeRemotingServer();
-
+            // init resources
             initializeResources();
-
+            // register processor
             registerProcessor();
-
+            // init scheduled task
             initializeScheduledTasks();
 
             initialTransaction();
@@ -1517,7 +1549,7 @@ public class BrokerController {
         if (this.brokerOuterAPI != null) {
             this.brokerOuterAPI.start();
         }
-
+        // start basic service
         startBasicService();
 
         if (!isIsolated && !this.messageStoreConfig.isEnableDLegerCommitLog() && !this.messageStoreConfig.isDuplicationEnable()) {
@@ -1525,6 +1557,12 @@ public class BrokerController {
             this.registerBrokerAll(true, false, true);
         }
 
+        /**
+         * This configurable item defines interval of topics registration of broker to name server. Allowing values are
+         * between 10,000 and 60,000 milliseconds.
+         */
+        // private int registerNameServerPeriod = 1000 * 30;
+        // every 30 seconds
         scheduledFutures.add(this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.getBrokerIdentity()) {
             @Override
             public void run2() {

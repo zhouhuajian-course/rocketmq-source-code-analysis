@@ -27,19 +27,22 @@ import org.apache.rocketmq.logging.InnerLoggerFactory;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+// broker identity
 public class BrokerIdentity {
     private static final String DEFAULT_CLUSTER_NAME = "DefaultCluster";
     protected static final InternalLogger LOGGER = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
     public static final BrokerIdentity BROKER_CONTAINER_IDENTITY = new BrokerIdentity(true);
-
+    // broker name local host name
     @ImportantField
     private String brokerName = localHostName();
+    // broker cluster name
     @ImportantField
     private String brokerClusterName = DEFAULT_CLUSTER_NAME;
+    // broker id
     @ImportantField
     private volatile long brokerId = MixAll.MASTER_ID;
-
+    // is broker container default false
     private boolean isBrokerContainer = false;
 
     // Do not set it manually, it depends on the startup mode

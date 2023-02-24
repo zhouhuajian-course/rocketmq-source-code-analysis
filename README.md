@@ -1,5 +1,302 @@
 # RocketMQ 源码分析
 
+## broker route register
+
+实际路由注册 org.apache.rocketmq.broker.out.BrokerOuterAPI#registerBrokerAll
+
+every 30 seconds
+
+```text
+    if (!isIsolated && !this.messageStoreConfig.isEnableDLegerCommitLog() && !this.messageStoreConfig.isDuplicationEnable()) {
+            changeSpecialServiceStatus(this.brokerConfig.getBrokerId() == MixAll.MASTER_ID);
+            this.registerBrokerAll(true, false, true);
+        }
+
+        scheduledFutures.add(this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.getBrokerIdentity()) {
+            @Override
+            public void run2() {
+                try {
+                    if (System.currentTimeMillis() < shouldStartTime) {
+                        BrokerController.LOG.info("Register to namesrv after {}", shouldStartTime);
+                        return;
+                    }
+                    if (isIsolated) {
+                        BrokerController.LOG.info("Skip register for broker is isolated");
+                        return;
+                    }
+                    BrokerController.this.registerBrokerAll(true, false, brokerConfig.isForceRegister());
+                } catch (Throwable e) {
+                    BrokerController.LOG.error("registerBrokerAll Exception", e);
+                }
+            }
+        }, 1000 * 10, Math.max(10000, Math.min(brokerConfig.getRegisterNameServerPeriod(), 60000)), TimeUnit.MILLISECONDS));
+
+
+  public List<RegisterBrokerResult> registerBrokerAll(
+            final String clusterName,
+            final String brokerAddr,
+            final String brokerName,
+            final long brokerId,
+            final String haServerAddr,
+            final TopicConfigSerializeWrapper topicConfigWrapper,
+            final List<String> filterServerList,
+            final boolean oneway,
+            final int timeoutMills,
+            final boolean enableActingMaster,
+            final boolean compressed,
+            final Long heartbeatTimeoutMillis,
+            final BrokerIdentity brokerIdentity) {
+
+        final List<RegisterBrokerResult> registerBrokerResultList = new CopyOnWriteArrayList<>();
+        List<String> nameServerAddressList = this.remotingClient.getAvailableNameSrvList();
+        if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
+            // header
+            final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
+            requestHeader.setBrokerAddr(brokerAddr);
+            requestHeader.setBrokerId(brokerId);
+            requestHeader.setBrokerName(brokerName);
+            requestHeader.setClusterName(clusterName);
+            requestHeader.setHaServerAddr(haServerAddr);
+            requestHeader.setEnableActingMaster(enableActingMaster);
+            requestHeader.setCompressed(false);
+            if (heartbeatTimeoutMillis != null) {
+                requestHeader.setHeartbeatTimeoutMillis(heartbeatTimeoutMillis);
+            }
+            // body
+            RegisterBrokerBody requestBody = new RegisterBrokerBody();
+            requestBody.setTopicConfigSerializeWrapper(TopicConfigAndMappingSerializeWrapper.from(topicConfigWrapper));
+            requestBody.setFilterServerList(filterServerList);
+            final byte[] body = requestBody.encode(compressed);
+            final int bodyCrc32 = UtilAll.crc32(body);
+            requestHeader.setBodyCrc32(bodyCrc32);
+            final CountDownLatch countDownLatch = new CountDownLatch(nameServerAddressList.size());
+            // for namesrv addr: name server address list
+            for (final String namesrvAddr : nameServerAddressList) {
+                brokerOuterExecutor.execute(new AbstractBrokerRunnable(brokerIdentity) {
+                    @Override
+                    public void run2() {
+                        try {
+                            RegisterBrokerResult result = registerBroker(namesrvAddr, oneway, timeoutMills, requestHeader, body);
+                            if (result != null) {
+                                registerBrokerResultList.add(result);
+                            }
+
+                            LOGGER.info("Registering current broker to name server completed. TargetHost={}", namesrvAddr);
+                        } catch (Exception e) {
+                            LOGGER.error("Failed to register current broker to name server. TargetHost={}", namesrvAddr, e);
+                        } finally {
+                            countDownLatch.countDown();
+                        }
+                    }
+                });
+            }
+
+            try {
+                if (!countDownLatch.await(timeoutMills, TimeUnit.MILLISECONDS)) {
+                    LOGGER.warn("Registration to one or more name servers does NOT complete within deadline. Timeout threshold: {}ms", timeoutMills);
+                }
+            } catch (InterruptedException ignore) {
+            }
+        }
+
+        return registerBrokerResultList;
+    }
+```
+
+## broker controller
+
+![broker-controller.png](readme/broker-controller.png)
+
+_from internet_
+
+## broker scheduled task
+
+```text
+    protected void initializeScheduledTasks() {
+
+        initializeBrokerScheduledTasks();
+
+        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    BrokerController.this.brokerOuterAPI.refreshMetadata();
+                } catch (Exception e) {
+                    LOG.error("ScheduledTask refresh metadata exception", e);
+                }
+            }
+        }, 10, 5, TimeUnit.SECONDS);
+
+        if (this.brokerConfig.getNamesrvAddr() != null) {
+            this.brokerOuterAPI.updateNameServerAddressList(this.brokerConfig.getNamesrvAddr());
+            LOG.info("Set user specified name server address: {}", this.brokerConfig.getNamesrvAddr());
+            // also auto update namesrv if specify
+            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        BrokerController.this.brokerOuterAPI.updateNameServerAddressList(BrokerController.this.brokerConfig.getNamesrvAddr());
+                    } catch (Throwable e) {
+                        LOG.error("Failed to update nameServer address list", e);
+                    }
+                }
+            }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
+        } else if (this.brokerConfig.isFetchNamesrvAddrByAddressServer()) {
+            this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+
+                @Override
+                public void run() {
+                    try {
+                        BrokerController.this.brokerOuterAPI.fetchNameServerAddr();
+                    } catch (Throwable e) {
+                        LOG.error("Failed to fetch nameServer address", e);
+                    }
+                }
+            }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
+        }
+    }
+```
+
+## Broker 3 listen ports and remoting server vs. fast remoting server
+
+```text
+    protected void initializeRemotingServer() throws CloneNotSupportedException {
+        this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);
+        NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();
+        // neety server config get listen port -2
+        int listeningPort = nettyServerConfig.getListenPort() - 2;
+        if (listeningPort < 0) {
+            listeningPort = 0;
+        }
+        fastConfig.setListenPort(listeningPort);
+        // fast remoting server
+        this.fastRemotingServer = new NettyRemotingServer(fastConfig, this.clientHousekeepingService);
+    }
+```
+
+```text
+本文主要介绍RocketMQ的多端口监听机制，通过本文，你可以了解到Broker端源码中remotingServer和fastRemotingServer的区别，以及客户端配置中，vipChannelEnabled的作用。
+
+1 多端口监听
+
+在RocketMQ中，可以通过broker.conf配置文件中指定listenPort配置项来指定Broker监听客户端请求的端口，如果不指定，默认监听10911端口。listenPort=10911
+不过，Broker启动时，实际上会监听3个端口：10909、10911、10912，如下所示：$ lsof -iTCP -nP | grep LISTEN
+
+java  1892656 tianshouzhi.robin   96u  IPv6 14889281  0t0  TCP *:10912 (LISTEN)
+java  1892656 tianshouzhi.robin  101u  IPv6 14889285  0t0  TCP *:10911 (LISTEN)
+java  1892656 tianshouzhi.robin  102u  IPv6 14889288  0t0  TCP *:10909 (LISTEN)
+
+而其他两个端口是根据listenPort的值，动态计算出来的。这三个端口由Broker内部不同的组件使用，作用分别如下：
+remotingServer：监听listenPort配置项指定的监听端口，默认10911
+fastRemotingServer：监听端口值listenPort-2，即默认为10909
+HAService：监听端口为值为listenPort+1，即10912，该端口用于Broker的主从同步
+
+本文主要聚焦于remotingServer和fastRemotingServer的区别：
+Broker端：remotingServer可以处理客户端所有请求，如：生产者发送消息的请求，消费者拉取消息的请求。fastRemotingServer功能基本与remotingServer相同，唯一不同的是不可以处理消费者拉取消息的请求。Broker在向NameServer注册时，只会上报remotingServer监听的listenPort端口。
+客户端：默认情况下，生产者发送消息是请求fastRemotingServer，我们也可以通过配置让其请求remotingServer；消费者拉取消息只能请求remotingServer。
+下面通过源码进行验证Broker端构建remotingServer和fastRemotingServer时的区别，以及客户端如何配置。
+```
+
+_From Internet_
+
+## Broker 配置文件路径
+
+![config-file-path.png](readme/config-file-path.png)
+
+![config-file-path-02.png](readme/config-file-path-02.png)
+
+```java
+public class BrokerPathConfigHelper {
+    // Broker路径配置帮助工具类 broker配置路径 默认 家目录 store config broker.properties
+    private static String brokerConfigPath = System.getProperty("user.home") + File.separator + "store"
+        + File.separator + "config" + File.separator + "broker.properties";
+
+    public static String getBrokerConfigPath() {
+        return brokerConfigPath;
+    }
+
+    public static void setBrokerConfigPath(String path) {
+        brokerConfigPath = path;
+    }
+    // root dir config topics.json
+    public static String getTopicConfigPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "topics.json";
+    }
+
+    public static String getTopicQueueMappingPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "topicQueueMapping.json";
+    }
+
+    public static String getConsumerOffsetPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "consumerOffset.json";
+    }
+
+    public static String getLmqConsumerOffsetPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "lmqConsumerOffset.json";
+    }
+
+    public static String getConsumerOrderInfoPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "consumerOrderInfo.json";
+    }
+
+    public static String getSubscriptionGroupPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "subscriptionGroup.json";
+    }
+    public static String getTimerCheckPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "timercheck";
+    }
+    public static String getTimerMetricsPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "timermetrics";
+    }
+
+    public static String getConsumerFilterPath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "consumerFilter.json";
+    }
+
+    public static String getMessageRequestModePath(final String rootDir) {
+        return rootDir + File.separator + "config" + File.separator + "messageRequestMode.json";
+    }
+}
+```
+
+## Broker 系统 Topic
+
++ RMQ_SYS_TRANS_OP_HALF_TOPIC 用来存放半事务消息
++ SCHEDULE_TOPIC_XXXX 用来存放延时消息
++ TBW102 自动创建Topic的模板
++ RMQ_SYS_BENCHMARK_TOPIC 系统基准测试Topic
++ BrokerClusterName
++ BrokerName
++ ...
+
+see: `org.apache.rocketmq.broker.topic.TopicConfigManager.TopicConfigManager(org.apache.rocketmq.broker.BrokerController)`
+
+## 自动创建 Topic (copy TBW102 topic config)
+
+生产环境下 一般禁用 自动创建 Topic 避免 Topic 被随意创建 无法统一管理
+
+```text
+    {
+            // is auto create topic enable
+            if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
+                // public static final String AUTO_CREATE_TOPIC_KEY_TOPIC = "TBW102"; // Will be created at broker when isAutoCreateTopicEnable
+                String topic = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
+                TopicConfig topicConfig = new TopicConfig(topic);
+                TopicValidator.addSystemTopic(topic);
+                topicConfig.setReadQueueNums(this.brokerController.getBrokerConfig()
+                    .getDefaultTopicQueueNums());
+                topicConfig.setWriteQueueNums(this.brokerController.getBrokerConfig()
+                    .getDefaultTopicQueueNums());
+                int perm = PermName.PERM_INHERIT | PermName.PERM_READ | PermName.PERM_WRITE;
+                topicConfig.setPerm(perm);
+                this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
+            }
+        }
+```
+
+Producer发送一个不存在的Topic消息时，首先会从NameServer拉取Topic路由数据，第一次拉取必然失败，第二次会直接拉取TBW102的路由数据，基于它创建TopicPublishInfo并缓存到本地，进行正常的消息发送，在Header里将defaultTopic设置为TBW102。Broker接收到消息时，先对消息做Check，检查到Topic不存在，会基于defaultTopic的配置去创建该Topic，然后注册到NameServer上，这样一个全新的Topic就被自动创建了。
+_From Internet_
+
 ## 留意现象
 
 运行 NamesrvStartup，运行 RMQ Dashboard，再运行不指定NameServer地址的BrokerStartup，Dashboard大多数数据为空

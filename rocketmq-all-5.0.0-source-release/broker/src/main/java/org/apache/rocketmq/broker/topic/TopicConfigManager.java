@@ -51,16 +51,25 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+// broker topic TopicConfigManager extends ConfigManager
+// pattern
 public class TopicConfigManager extends ConfigManager {
+    // log
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
+    // lock timeout millis 3000
     private static final long LOCK_TIMEOUT_MILLIS = 3000;
+    // schedule topic queue num
     private static final int SCHEDULE_TOPIC_QUEUE_NUM = 18;
-
+    // topic config table lock reentrant lock
     private transient final Lock topicConfigTableLock = new ReentrantLock();
-
+    // topic config table concurrent hash map
+    // string -> topic config
+    // initial capacity 1024
     private final ConcurrentMap<String, TopicConfig> topicConfigTable =
         new ConcurrentHashMap<String, TopicConfig>(1024);
+    // data version
     private final DataVersion dataVersion = new DataVersion();
+    // broker controller
     private transient BrokerController brokerController;
 
     public TopicConfigManager() {
@@ -69,15 +78,21 @@ public class TopicConfigManager extends ConfigManager {
     public TopicConfigManager(BrokerController brokerController) {
         this.brokerController = brokerController;
         {
+            // topic validator RMQ SYS SELF TEST TOPIC
+            // public static final String RMQ_SYS_SELF_TEST_TOPIC = "SELF_TEST_TOPIC";
             String topic = TopicValidator.RMQ_SYS_SELF_TEST_TOPIC;
+            // topic config topic
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
             topicConfig.setReadQueueNums(1);
             topicConfig.setWriteQueueNums(1);
+            // topic config table put topic config get topic name topic config
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
+            // is auto create topic enable
             if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
+                // public static final String AUTO_CREATE_TOPIC_KEY_TOPIC = "TBW102"; // Will be created at broker when isAutoCreateTopicEnable
                 String topic = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
                 TopicConfig topicConfig = new TopicConfig(topic);
                 TopicValidator.addSystemTopic(topic);
@@ -94,23 +109,27 @@ public class TopicConfigManager extends ConfigManager {
             String topic = TopicValidator.RMQ_SYS_BENCHMARK_TOPIC;
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
+            // read write queue nums 1024
             topicConfig.setReadQueueNums(1024);
             topicConfig.setWriteQueueNums(1024);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
+            // broker cluster name DefaultCluster
             String topic = this.brokerController.getBrokerConfig().getBrokerClusterName();
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
             int perm = PermName.PERM_INHERIT;
+            // is cluster topic enable default true
             if (this.brokerController.getBrokerConfig().isClusterTopicEnable()) {
+                // perm = 1 + 2 + 4 = 7
                 perm |= PermName.PERM_READ | PermName.PERM_WRITE;
             }
             topicConfig.setPerm(perm);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
-
+            // broker name
             String topic = this.brokerController.getBrokerConfig().getBrokerName();
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
@@ -124,6 +143,7 @@ public class TopicConfigManager extends ConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
+            // SYS OFFSET MVED EVENT
             String topic = TopicValidator.RMQ_SYS_OFFSET_MOVED_EVENT;
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
@@ -132,6 +152,7 @@ public class TopicConfigManager extends ConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
+            // SCHEDULE TOPIC
             String topic = TopicValidator.RMQ_SYS_SCHEDULE_TOPIC;
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
@@ -141,6 +162,7 @@ public class TopicConfigManager extends ConfigManager {
         }
         {
             if (this.brokerController.getBrokerConfig().isTraceTopicEnable()) {
+                // msg trace topic name
                 String topic = this.brokerController.getBrokerConfig().getMsgTraceTopicName();
                 TopicConfig topicConfig = new TopicConfig(topic);
                 TopicValidator.addSystemTopic(topic);
@@ -150,6 +172,7 @@ public class TopicConfigManager extends ConfigManager {
             }
         }
         {
+            // reply topic postfix
             String topic = this.brokerController.getBrokerConfig().getBrokerClusterName() + "_" + MixAll.REPLY_TOPIC_POSTFIX;
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
@@ -581,6 +604,7 @@ public class TopicConfigManager extends ConfigManager {
             TopicConfigSerializeWrapper topicConfigSerializeWrapper =
                 TopicConfigSerializeWrapper.fromJson(jsonString, TopicConfigSerializeWrapper.class);
             if (topicConfigSerializeWrapper != null) {
+                // topic config table
                 this.topicConfigTable.putAll(topicConfigSerializeWrapper.getTopicConfigTable());
                 this.dataVersion.assignNewOne(topicConfigSerializeWrapper.getDataVersion());
                 this.printLoadDataWhenFirstBoot(topicConfigSerializeWrapper);

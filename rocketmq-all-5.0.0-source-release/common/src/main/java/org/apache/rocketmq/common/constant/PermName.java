@@ -16,13 +16,20 @@
  */
 package org.apache.rocketmq.common.constant;
 
+// comon constant perm name
 public class PermName {
     public static final int INDEX_PERM_PRIORITY = 3;
     public static final int INDEX_PERM_READ = 2;
     public static final int INDEX_PERM_WRITE = 1;
+    // inherit
     public static final int INDEX_PERM_INHERIT = 0;
 
-
+    // 0000000001
+    // 1 << 0 = 1 1 << 1 = 2 1 << 2 = 4 1 << 3 = 8
+    // priority 1 << 3 = 8
+    // read 1 << 2 = 4
+    // write 1 << 1 = 2
+    // inherit 1 << 0 = 1
     public static final int PERM_PRIORITY = 0x1 << INDEX_PERM_PRIORITY;
     public static final int PERM_READ = 0x1 << INDEX_PERM_READ;
     public static final int PERM_WRITE = 0x1 << INDEX_PERM_WRITE;

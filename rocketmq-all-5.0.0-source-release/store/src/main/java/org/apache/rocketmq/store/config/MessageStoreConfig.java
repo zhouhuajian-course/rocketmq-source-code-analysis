@@ -27,6 +27,7 @@ public class MessageStoreConfig {
     public static final String MULTI_PATH_SPLITTER = System.getProperty("rocketmq.broker.multiPathSplitter", ",");
 
     //The root directory in which the log data is kept
+    // store path root dir system get property  use.home file separator store
     @ImportantField
     private String storePathRootDir = System.getProperty("user.home") + File.separator + "store";
 
@@ -221,7 +222,7 @@ public class MessageStoreConfig {
     private boolean isEnableBatchPush = false;
 
     private boolean enableScheduleMessageStats = true;
-
+    // light mq
     private boolean enableLmq = false;
     private boolean enableMultiDispatch = false;
     private int maxLmqConsumeQueueNum = 20000;

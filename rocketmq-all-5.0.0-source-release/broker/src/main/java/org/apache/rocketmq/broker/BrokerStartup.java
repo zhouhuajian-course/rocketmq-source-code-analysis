@@ -64,10 +64,10 @@ public class BrokerStartup {
         try {
 
             controller.start();
-
+            // the broker[broker name, broker addr] boot success
             String tip = "The broker[" + controller.getBrokerConfig().getBrokerName() + ", "
                 + controller.getBrokerAddr() + "] boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
-
+            // and name server is ...
             if (null != controller.getBrokerConfig().getNamesrvAddr()) {
                 tip += " and name server is " + controller.getBrokerConfig().getNamesrvAddr();
             }
@@ -262,36 +262,49 @@ public class BrokerStartup {
             controller.getConfiguration().registerConfig(properties);
             // controller initialize
             boolean initResult = controller.initialize();
+            // if !initResult
             if (!initResult) {
+                // controller shutdown
                 controller.shutdown();
+                // System exit -3
                 System.exit(-3);
             }
-
+            // addShutdownHook
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                // volatile boolean hasShutdown = false
                 private volatile boolean hasShutdown = false;
+                // AtomicInteger shutdownTimes = new AtomicInterger(initialValue: 0)
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);
-
+                // run()
                 @Override
                 public void run() {
+                    // synchronized this
                     synchronized (this) {
+                        // shutdown hook was invoked this.shutdownTimes.incrementAndGet()
                         log.info("Shutdown hook was invoked, {}", this.shutdownTimes.incrementAndGet());
+                        // !this.hasShutdown
                         if (!this.hasShutdown) {
                             this.hasShutdown = true;
                             long beginTime = System.currentTimeMillis();
+                            // controller shutdown
                             controller.shutdown();
+                            // consumingTimeTotal
                             long consumingTimeTotal = System.currentTimeMillis() - beginTime;
+                            // shutdown hook over consuming total time ms {} consuming time total
                             log.info("Shutdown hook over, consuming total time(ms): {}", consumingTimeTotal);
                         }
                     }
                 }
             }, "ShutdownHook"));
-
+            // return controller
             return controller;
         } catch (Throwable e) {
+            // e.print stack trace
             e.printStackTrace();
+            // System exit -1
             System.exit(-1);
         }
-
+        // return null
         return null;
     }
 

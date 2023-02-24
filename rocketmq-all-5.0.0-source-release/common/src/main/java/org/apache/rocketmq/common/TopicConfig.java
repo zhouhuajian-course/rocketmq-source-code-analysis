@@ -27,16 +27,25 @@ import org.apache.rocketmq.common.constant.PermName;
 
 import static org.apache.rocketmq.common.TopicAttributes.TOPIC_MESSAGE_TYPE_ATTRIBUTE;
 
+// common topic config
 public class TopicConfig {
+    // seperator = ' '
     private static final String SEPARATOR = " ";
+    // default read queue nums 16
     public static int defaultReadQueueNums = 16;
+    // write queue nums 16
     public static int defaultWriteQueueNums = 16;
     private static final TypeReference<Map<String, String>> ATTRIBUTES_TYPE_REFERENCE = new TypeReference<Map<String, String>>() {
     };
+    // topic name string
     private String topicName;
+    // read write queue nums
     private int readQueueNums = defaultReadQueueNums;
     private int writeQueueNums = defaultWriteQueueNums;
+    // topic perm read | write
+    // read 4 | write 2 = 6
     private int perm = PermName.PERM_READ | PermName.PERM_WRITE;
+    // topic filter type single tag
     private TopicFilterType topicFilterType = TopicFilterType.SINGLE_TAG;
     private int topicSysFlag = 0;
     private boolean order = false;

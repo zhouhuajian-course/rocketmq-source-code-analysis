@@ -22,6 +22,8 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+// abstract class ConfigManager
+// common
 public abstract class ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -30,14 +32,21 @@ public abstract class ConfigManager {
     public boolean load() {
         String fileName = null;
         try {
+            // config file path
             fileName = this.configFilePath();
+            // mixall file to string
+            // json string
             String jsonString = MixAll.file2String(fileName);
 
             if (null == jsonString || jsonString.length() == 0) {
+                // load bak
                 return this.loadBak();
             } else {
+                // decode json string
                 this.decode(jsonString);
+                // log info load filename ok
                 log.info("load " + fileName + " OK");
+                // return true
                 return true;
             }
         } catch (Exception e) {
@@ -51,14 +60,19 @@ public abstract class ConfigManager {
     private boolean loadBak() {
         String fileName = null;
         try {
+            // config file path
             fileName = this.configFilePath();
+            // filename + .bak
             String jsonString = MixAll.file2String(fileName + ".bak");
             if (jsonString != null && jsonString.length() > 0) {
+                // decode json string
                 this.decode(jsonString);
+                // load filename ok
                 log.info("load " + fileName + " OK");
                 return true;
             }
         } catch (Exception e) {
+            // log error load filename failed
             log.error("load " + fileName + " Failed", e);
             return false;
         }

@@ -42,6 +42,7 @@ public abstract class RemotingSerializable {
     }
 
     public static <T> T fromJson(String json, Class<T> classOfT) {
+        // fastjson
         return JSON.parseObject(json, classOfT);
     }
 
