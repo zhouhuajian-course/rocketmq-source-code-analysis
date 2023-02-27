@@ -1,0 +1,43 @@
+package org.apache.rocketmq.example.quickstart;
+
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.common.message.Message;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.TimeZone;
+
+
+public class SingleMessageProducer {
+    public static void main(String[] args) throws Exception {
+        DefaultMQProducer producer = new DefaultMQProducer("FarmerProducerGroup");
+        producer.setNamesrvAddr("localhost:9876");
+        producer.setSendMsgTimeout(100000000); // for debug
+        producer.start();
+
+        String topic = "FruitTopic";
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat("hh:mm:ss");
+        dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+        String time = dateFormat.format(new Date());
+        byte[] body = ("Apple " + time).getBytes("UTF-8");
+        Message message = new Message(topic, body);
+        SendResult result = producer.send(message);
+        System.out.printf("%s%n", result);
+
+        producer.shutdown();
+    }
+}
+
+
+/**
+ * D:\Java\jdk1.8.0_333\bin\java.exe -javaagent:C:\Users\zhouh\Desktop\ideaIC-2022.3.1.win\lib\idea_rt.jar=60168:C:\Users\zhouh\Desktop\ideaIC-2022.3.1.win\bin -Dfile.encoding=UTF-8 -classpath D:\java\jdk1.8.0_333\jre\lib\charsets.jar;D:\java\jdk1.8.0_333\jre\lib\deploy.jar;D:\java\jdk1.8.0_333\jre\lib\ext\access-bridge-64.jar;D:\java\jdk1.8.0_333\jre\lib\ext\cldrdata.jar;D:\java\jdk1.8.0_333\jre\lib\ext\dnsns.jar;D:\java\jdk1.8.0_333\jre\lib\ext\jaccess.jar;D:\java\jdk1.8.0_333\jre\lib\ext\jfxrt.jar;D:\java\jdk1.8.0_333\jre\lib\ext\localedata.jar;D:\java\jdk1.8.0_333\jre\lib\ext\nashorn.jar;D:\java\jdk1.8.0_333\jre\lib\ext\sunec.jar;D:\java\jdk1.8.0_333\jre\lib\ext\sunjce_provider.jar;D:\java\jdk1.8.0_333\jre\lib\ext\sunmscapi.jar;D:\java\jdk1.8.0_333\jre\lib\ext\sunpkcs11.jar;D:\java\jdk1.8.0_333\jre\lib\ext\zipfs.jar;D:\java\jdk1.8.0_333\jre\lib\javaws.jar;D:\java\jdk1.8.0_333\jre\lib\jce.jar;D:\java\jdk1.8.0_333\jre\lib\jfr.jar;D:\java\jdk1.8.0_333\jre\lib\jfxswt.jar;D:\java\jdk1.8.0_333\jre\lib\jsse.jar;D:\java\jdk1.8.0_333\jre\lib\management-agent.jar;D:\java\jdk1.8.0_333\jre\lib\plugin.jar;D:\java\jdk1.8.0_333\jre\lib\resources.jar;D:\java\jdk1.8.0_333\jre\lib\rt.jar;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\example\target\classes;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\client\target\classes;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\common\target\classes;C:\Users\zhouh\.m2\repository\com\github\luben\zstd-jni\1.5.2-2\zstd-jni-1.5.2-2.jar;C:\Users\zhouh\.m2\repository\org\lz4\lz4-java\1.8.0\lz4-java-1.8.0.jar;C:\Users\zhouh\.m2\repository\org\apache\commons\commons-lang3\3.12.0\commons-lang3-3.12.0.jar;C:\Users\zhouh\.m2\repository\com\google\guava\guava\31.0.1-jre\guava-31.0.1-jre.jar;C:\Users\zhouh\.m2\repository\com\google\guava\failureaccess\1.0.1\failureaccess-1.0.1.jar;C:\Users\zhouh\.m2\repository\com\google\guava\listenablefuture\9999.0-empty-to-avoid-conflict-with-guava\listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar;C:\Users\zhouh\.m2\repository\com\google\code\findbugs\jsr305\3.0.2\jsr305-3.0.2.jar;C:\Users\zhouh\.m2\repository\org\checkerframework\checker-qual\3.12.0\checker-qual-3.12.0.jar;C:\Users\zhouh\.m2\repository\com\google\j2objc\j2objc-annotations\1.3\j2objc-annotations-1.3.jar;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\srvutil\target\classes;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\remoting\target\classes;C:\Users\zhouh\.m2\repository\io\netty\netty-all\4.1.65.Final\netty-all-4.1.65.Final.jar;C:\Users\zhouh\.m2\repository\com\googlecode\concurrentlinkedhashmap\concurrentlinkedhashmap-lru\1.4.2\concurrentlinkedhashmap-lru-1.4.2.jar;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\openmessaging\target\classes;C:\Users\zhouh\.m2\repository\io\openmessaging\openmessaging-api\0.3.1-alpha\openmessaging-api-0.3.1-alpha.jar;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\acl\target\classes;C:\Users\zhouh\.m2\repository\org\apache\rocketmq\rocketmq-proto\2.0.0\rocketmq-proto-2.0.0.jar;C:\Users\zhouh\.m2\repository\org\apache\tomcat\annotations-api\6.0.53\annotations-api-6.0.53.jar;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\logging\target\classes;C:\Users\zhouh\.m2\repository\org\yaml\snakeyaml\1.30\snakeyaml-1.30.jar;C:\Users\zhouh\.m2\repository\commons-codec\commons-codec\1.13\commons-codec-1.13.jar;C:\Users\zhouh\.m2\repository\commons-validator\commons-validator\1.7\commons-validator-1.7.jar;C:\Users\zhouh\.m2\repository\commons-beanutils\commons-beanutils\1.9.4\commons-beanutils-1.9.4.jar;C:\Users\zhouh\.m2\repository\commons-digester\commons-digester\2.1\commons-digester-2.1.jar;C:\Users\zhouh\.m2\repository\commons-logging\commons-logging\1.2\commons-logging-1.2.jar;C:\Users\zhouh\.m2\repository\commons-collections\commons-collections\3.2.2\commons-collections-3.2.2.jar;C:\Users\zhouh\.m2\repository\com\google\protobuf\protobuf-java-util\3.20.1\protobuf-java-util-3.20.1.jar;C:\Users\zhouh\.m2\repository\com\google\protobuf\protobuf-java\3.20.1\protobuf-java-3.20.1.jar;C:\Users\zhouh\.m2\repository\com\google\code\gson\gson\2.8.9\gson-2.8.9.jar;E:\java-project\rocketmq-source-code-analysis\rocketmq-all-5.0.0-source-release\tools\target\classes;C:\Users\zhouh\.m2\repository\com\alibaba\fastjson\1.2.69_noneautotype\fastjson-1.2.69_noneautotype.jar;C:\Users\zhouh\.m2\repository\ch\qos\logback\logback-classic\1.2.10\logback-classic-1.2.10.jar;C:\Users\zhouh\.m2\repository\ch\qos\logback\logback-core\1.2.10\logback-core-1.2.10.jar;C:\Users\zhouh\.m2\repository\org\slf4j\slf4j-api\1.7.7\slf4j-api-1.7.7.jar;C:\Users\zhouh\.m2\repository\org\javassist\javassist\3.20.0-GA\javassist-3.20.0-GA.jar;C:\Users\zhouh\.m2\repository\io\jaegertracing\jaeger-core\1.6.0\jaeger-core-1.6.0.jar;C:\Users\zhouh\.m2\repository\io\opentracing\opentracing-util\0.33.0\opentracing-util-0.33.0.jar;C:\Users\zhouh\.m2\repository\io\opentracing\opentracing-noop\0.33.0\opentracing-noop-0.33.0.jar;C:\Users\zhouh\.m2\repository\io\jaegertracing\jaeger-client\1.6.0\jaeger-client-1.6.0.jar;C:\Users\zhouh\.m2\repository\io\jaegertracing\jaeger-thrift\1.6.0\jaeger-thrift-1.6.0.jar;C:\Users\zhouh\.m2\repository\org\apache\thrift\libthrift\0.14.1\libthrift-0.14.1.jar;C:\Users\zhouh\.m2\repository\org\apache\tomcat\embed\tomcat-embed-core\8.5.46\tomcat-embed-core-8.5.46.jar;C:\Users\zhouh\.m2\repository\org\apache\tomcat\tomcat-annotations-api\8.5.46\tomcat-annotations-api-8.5.46.jar;C:\Users\zhouh\.m2\repository\javax\annotation\javax.annotation-api\1.3.2\javax.annotation-api-1.3.2.jar;C:\Users\zhouh\.m2\repository\com\squareup\okhttp3\okhttp\4.9.0\okhttp-4.9.0.jar;C:\Users\zhouh\.m2\repository\com\squareup\okio\okio\2.8.0\okio-2.8.0.jar;C:\Users\zhouh\.m2\repository\org\jetbrains\kotlin\kotlin-stdlib-common\1.4.0\kotlin-stdlib-common-1.4.0.jar;C:\Users\zhouh\.m2\repository\io\jaegertracing\jaeger-tracerresolver\1.6.0\jaeger-tracerresolver-1.6.0.jar;C:\Users\zhouh\.m2\repository\io\opentracing\contrib\opentracing-tracerresolver\0.1.8\opentracing-tracerresolver-0.1.8.jar;C:\Users\zhouh\.m2\repository\commons-cli\commons-cli\1.4\commons-cli-1.4.jar;C:\Users\zhouh\.m2\repository\org\awaitility\awaitility\4.1.0\awaitility-4.1.0.jar;C:\Users\zhouh\.m2\repository\org\hamcrest\hamcrest\2.1\hamcrest-2.1.jar org.apache.rocketmq.example.quickstart.SingleMessageProducer
+ * Exception in thread "main" org.apache.rocketmq.client.exception.MQClientException: producerGroup can not equal DEFAULT_PRODUCER, please specify another one.
+ * For more information, please visit the url, http://rocketmq.apache.org/docs/faq/
+ * 	at org.apache.rocketmq.client.impl.producer.DefaultMQProducerImpl.checkConfig(DefaultMQProducerImpl.java:267)
+ * 	at org.apache.rocketmq.client.impl.producer.DefaultMQProducerImpl.start(DefaultMQProducerImpl.java:220)
+ * 	at org.apache.rocketmq.client.impl.producer.DefaultMQProducerImpl.start(DefaultMQProducerImpl.java:212)
+ * 	at org.apache.rocketmq.client.producer.DefaultMQProducer.start(DefaultMQProducer.java:299)
+ * 	at org.apache.rocketmq.example.quickstart.SingleMessageProducer.main(SingleMessageProducer.java:14)
+ */

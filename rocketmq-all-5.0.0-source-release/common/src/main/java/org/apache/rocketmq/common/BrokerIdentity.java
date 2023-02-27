@@ -35,7 +35,8 @@ public class BrokerIdentity {
     public static final BrokerIdentity BROKER_CONTAINER_IDENTITY = new BrokerIdentity(true);
     // broker name local host name
     @ImportantField
-    private String brokerName = localHostName();
+    // private String brokerName = localHostName();
+    private String brokerName = "broker-a";
     // broker cluster name
     @ImportantField
     private String brokerClusterName = DEFAULT_CLUSTER_NAME;

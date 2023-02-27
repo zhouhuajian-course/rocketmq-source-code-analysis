@@ -39,16 +39,18 @@ public class Validators {
     /**
      * Validate group
      */
+    // client volidators check group
     public static void checkGroup(String group) throws MQClientException {
+        // is blank
         if (UtilAll.isBlank(group)) {
             throw new MQClientException("the specified group is blank", null);
         }
-
+        // chacracter max length 255
         if (group.length() > CHARACTER_MAX_LENGTH) {
             throw new MQClientException("the specified group is longer than group max length 255.", null);
         }
 
-
+        // is topic or group illegal group
         if (isTopicOrGroupIllegal(group)) {
             throw new MQClientException(String.format(
                     "the specified group[%s] contains illegal characters, allowing only %s", group,
@@ -62,6 +64,7 @@ public class Validators {
         }
         // topic
         Validators.checkTopic(msg.getTopic());
+        // not allowed send topic
         Validators.isNotAllowedSendTopic(msg.getTopic());
 
         // body
@@ -73,6 +76,7 @@ public class Validators {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message body length is zero");
         }
 
+        // max message size
         if (msg.getBody().length > defaultMQProducer.getMaxMessageSize()) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL,
                 "the message body size over max value, MAX: " + defaultMQProducer.getMaxMessageSize());

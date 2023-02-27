@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.common.consumer;
 
+// common consumer consume from where
 public enum ConsumeFromWhere {
     CONSUME_FROM_LAST_OFFSET,
 

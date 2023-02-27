@@ -37,7 +37,10 @@ public class ClientConfig {
     public static final String SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY = "com.rocketmq.sendMessageWithVIPChannel";
     public static final String DECODE_READ_BODY = "com.rocketmq.read.body";
     public static final String DECODE_DECOMPRESS_BODY = "com.rocketmq.decompress.body";
+    // namesrc addr
+    // default         return System.getProperty(MixAll.NAMESRV_ADDR_PROPERTY, System.getenv(MixAll.NAMESRV_ADDR_ENV));
     private String namesrvAddr = NameServerAddressUtils.getNameServerAddresses();
+    // client ip
     private String clientIP = RemotingUtil.getLocalAddress();
     private String instanceName = System.getProperty("rocketmq.client.name", "DEFAULT");
     private int clientCallbackExecutorThreads = Runtime.getRuntime().availableProcessors();
@@ -48,10 +51,14 @@ public class ClientConfig {
     /**
      * Pulling topic information interval from the named server
      */
+    // pulling topic infromation
+    // poll get
+    // every 30s
     private int pollNameServerInterval = 1000 * 30;
     /**
      * Heartbeat interval in microseconds with message broker
      */
+    // heart beat every 30s
     private int heartbeatBrokerInterval = 1000 * 30;
     /**
      * Offset persistent interval for consumer
@@ -65,7 +72,7 @@ public class ClientConfig {
     private boolean vipChannelEnabled = Boolean.parseBoolean(System.getProperty(SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY, "false"));
 
     private boolean useTLS = TlsSystemConfig.tlsEnable;
-
+    // mq client api timeout 3s
     private int mqClientApiTimeout = 3 * 1000;
 
     private LanguageCode language = LanguageCode.JAVA;

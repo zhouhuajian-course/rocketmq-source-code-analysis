@@ -139,6 +139,7 @@ public class TopicValidator {
     }
 
     public static boolean isNotAllowedSendTopic(String topic) {
+        // NOT_ALLOWED_SEND_TOPIC_SET contains
         return NOT_ALLOWED_SEND_TOPIC_SET.contains(topic);
     }
 

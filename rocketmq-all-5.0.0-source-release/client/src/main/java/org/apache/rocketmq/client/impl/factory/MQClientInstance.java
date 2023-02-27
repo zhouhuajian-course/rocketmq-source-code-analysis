@@ -87,10 +87,13 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static org.apache.rocketmq.common.rpc.ClientMetadata.topicRouteData2EndpointsForStaticTopic;
 
+// producer consumer - client
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final static InternalLogger log = ClientLogger.getLog();
+    // client config
     private final ClientConfig clientConfig;
+    // client id
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
 
@@ -130,6 +133,7 @@ public class MQClientInstance {
     private final DefaultMQProducer defaultMQProducer;
     private final ConsumerStatsManager consumerStatsManager;
     private final AtomicLong sendHeartbeatTimesTotal = new AtomicLong(0);
+    // service state
     private ServiceState serviceState = ServiceState.CREATE_JUST;
     private final Random random = new Random();
 
@@ -258,6 +262,8 @@ public class MQClientInstance {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
                     // Start request-response channel
+                    //
+                    // this.remotingClient.start();
                     this.mQClientAPIImpl.start();
                     // Start various schedule tasks
                     this.startScheduledTask();
@@ -266,6 +272,7 @@ public class MQClientInstance {
                     // Start rebalance service
                     this.rebalanceService.start();
                     // Start push service
+                    // push service
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
                     this.serviceState = ServiceState.RUNNING;
@@ -288,7 +295,8 @@ public class MQClientInstance {
                 }
             }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
         }
-
+        // update topic route info from name server
+        // every half minute
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.updateTopicRouteInfoFromNameServer();
@@ -296,7 +304,7 @@ public class MQClientInstance {
                 log.error("ScheduledTask updateTopicRouteInfoFromNameServer exception", e);
             }
         }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
-
+        // send heart beat to all broker
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.cleanOfflineBroker();
@@ -305,7 +313,7 @@ public class MQClientInstance {
                 log.error("ScheduledTask sendHeartbeatToAllBroker exception", e);
             }
         }, 1000, this.clientConfig.getHeartbeatBrokerInterval(), TimeUnit.MILLISECONDS);
-
+        // persist all consumer offset
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.persistAllConsumerOffset();
@@ -313,7 +321,8 @@ public class MQClientInstance {
                 log.error("ScheduledTask persistAllConsumerOffset exception", e);
             }
         }, 1000 * 10, this.clientConfig.getPersistConsumerOffsetInterval(), TimeUnit.MILLISECONDS);
-
+        // adjust thread pool
+        // 1 minute
         this.scheduledExecutorService.scheduleAtFixedRate(() -> {
             try {
                 MQClientInstance.this.adjustThreadPool();

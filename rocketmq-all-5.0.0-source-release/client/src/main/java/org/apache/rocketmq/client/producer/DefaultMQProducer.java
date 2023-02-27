@@ -59,11 +59,13 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
  * <p> <strong>Thread Safety:</strong> After configuring and starting process, this class can be regarded as thread-safe
  * and used among multiple threads context. </p>
  */
+// client producer defulat mq producer extends client config implements mq producer
 public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     /**
      * Wrapping internal implementations for virtually all methods presented in this class.
      */
+    // default producer impl
     protected final transient DefaultMQProducerImpl defaultMQProducerImpl;
     private final InternalLogger log = ClientLogger.getLog();
     private final Set<Integer> retryResponseCodes = new CopyOnWriteArraySet<Integer>(Arrays.asList(
@@ -93,16 +95,19 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     /**
      * Number of queues to create per default topic.
      */
+    // defult topic queue nums 4
     private volatile int defaultTopicQueueNums = 4;
 
     /**
      * Timeout for sending messages.
      */
+    // send message timeout 3s
     private int sendMsgTimeout = 3000;
 
     /**
      * Compress message body threshold, namely, message body larger than 4k will be compressed on default.
      */
+    // compress message body over how much 4M
     private int compressMsgBodyOverHowmuch = 1024 * 4;
 
     /**
@@ -110,6 +115,12 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      *
      * This may potentially cause message duplication which is up to application developers to resolve.
      */
+    /**
+     *在同步模式下声明发送失败之前在内部执行的最大重试次数</p＞
+     *
+     *这可能会导致消息重复，由应用程序开发人员解决。
+     */
+    // retry times when send failed 2
     private int retryTimesWhenSendFailed = 2;
 
     /**
@@ -117,16 +128,19 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      *
      * This may potentially cause message duplication which is up to application developers to resolve.
      */
+    // retry times when send async failed 2
     private int retryTimesWhenSendAsyncFailed = 2;
 
     /**
      * Indicate whether to retry another broker on sending failure internally.
      */
+    // 指示是否在内部发送失败时重试另一个代理。
     private boolean retryAnotherBrokerWhenNotStoreOK = false;
 
     /**
      * Maximum allowed message body size in bytes.
      */
+    // max message size
     private int maxMessageSize = 1024 * 1024 * 4; // 4M
 
     /**
@@ -172,6 +186,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      *
      * @param producerGroup Producer group, see the name-sake field.
      */
+    // default mq producer producer group
     public DefaultMQProducer(final String producerGroup) {
         this(null, producerGroup, null);
     }
@@ -296,9 +311,12 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
     @Override
     public void start() throws MQClientException {
         this.setProducerGroup(withNamespace(this.producerGroup));
+        // 默认 mq 生产者 实现 启动
         this.defaultMQProducerImpl.start();
+        // 空 不等于 追踪 分发器
         if (null != traceDispatcher) {
             try {
+                // 追踪分发器 启动
                 traceDispatcher.start(this.getNamesrvAddr(), this.getAccessChannel());
             } catch (MQClientException e) {
                 log.warn("trace dispatcher start failed ", e);
@@ -345,8 +363,8 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * @throws InterruptedException if the sending thread is interrupted.
      */
     @Override
-    public SendResult send(
-        Message msg) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public SendResult send(Message msg) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // message set topic
         msg.setTopic(withNamespace(msg.getTopic()));
         return this.defaultMQProducerImpl.send(msg);
     }

@@ -1,5 +1,141 @@
 # RocketMQ 源码分析
 
+## 消费 并发消费模式 vs 顺序消费模式
+
+![producer.png](readme/producer.png)
+
+## 消费 Push模式 vs Pull模式
+
+RocketMQ推拉模式
+
+消费者客户端有两种方式从消息中间件获取消息并消费。严格意义上来讲，RocketMQ并没有实现PUSH模式，而是对拉模式进行一层包装，名字虽然是 Push 开头，实际在实现时，使用 Pull 方式实现。通过 Pull 不断轮询 Broker 获取消息。当不存在新消息时，Broker 会挂起请求，直到有新消息产生，取消挂起，返回新消息。
+
+1、概述
+
+1.1、PULL方式
+
+由消费者客户端主动向消息中间件（MQ消息服务器代理）拉取消息；采用Pull方式，如何设置Pull消息的拉取频率需要重点去考虑，举个例子来说，可能1分钟内连续来了1000条消息，然后2小时内没有新消息产生（概括起来说就是“消息延迟与忙等待”）。如果每次Pull的时间间隔比较久，会增加消息的延迟，即消息到达消费者的时间加长，MQ中消息的堆积量变大；若每次Pull的时间间隔较短，但是在一段时间内MQ中并没有任何消息可以消费，那么会产生很多无效的Pull请求的RPC开销，影响MQ整体的网络性能；
+
+1.2、PUSH方式
+
+由消息中间件（MQ消息服务器代理）主动地将消息推送给消费者；采用Push方式，可以尽可能实时地将消息发送给消费者进行消费。但是，在消费者的处理消息的能力较弱的时候(比如，消费者端的业务系统处理一条消息的流程比较复杂，其中的调用链路比较多导致消费时间比较久。概括起来地说就是“慢消费问题”)，而MQ不断地向消费者Push消息，消费者端的缓冲区可能会溢出，导致异常；
+
+## 消息消费
+
+消息消费以组的模式开展，一个消费组内可以包含多个消费者，每一个消费组可订阅多个主题，消费组之间有集群模式与广播模式两种消费模式。集群模式，主题下的同一条消息只允许被其中一个消费者消费。广播模式，主题下的同一条消息将被集群内的所有消费者消费一次。消息服务器与消费者之间的消息传送也有两种方式:推模式、拉模式。所谓的拉模式，是消费端主动发起拉消息请求，而推模式是消息到达消息服务器后，推送给消息消费者。RocketMQ 消息推模式的实现基于拉模式，在拉模式上包装一层，一个拉取任务完成后开始下一个拉取任务。
+
+消息队列负载机制遵循一个通用的思想: 一个消息队列同一时间只允许被一个消费者消费，一个消费者可以消费多个消息队列。
+
+RocketMQ 支持局部顺序消息消费，也就是保证同一个消息队列上的消息顺序消费。不支持消息全局顺序消费，如果要实现某一主题的全局顺序消息消费，可以将该主题的队列数设置为 1，牺牲高可用性。
+
+RocketMQ 支持两种消息过滤模式:表达式(TAG、SQL92)与类过滤模式。
+
+集群模式 vs 广播模式
+
+## 消息消费 rebalance
+
+假设一个主题四个队列，同一个消费者组的消费者是一个一个启动的。
+
++ 启动第一个消费者，负责四个队列的消费
++ 启动第二个消费者，消费再平衡，两个消费者，分别消费两个队列
++ 启动第三个消费者，消费再平衡，第一个消费者消费两个队列，第二、第三消费一个队列
++ 启动第四个消费者，消费再平衡，四个消费者，分别消费一个队列
++ 启动第五个消费者，闲置状态，不会分配队列给这个消费者
+
+再平衡由客户端实现，使用相同的算法，保证消费分配最终一致性
+
+不同Kafka，会选出一个消费者Leader进行重新分配。
+
+## MQClientInstance brokerAddrTable
+
+brokerAddrTable (ConcurrentHashMap) 
+
+key: brokerName
+value: (HashMap) 
+    key: brokerId
+    value: brokerAddress (IP:PORT)
+
+![brokerAddrTable.png](readme/brokerAddrTable.png)
+
+## ThreadLocal<Integer>
+
+private final ThreadLocal<Integer> threadLocalIndex = new ThreadLocal<Integer>();
+
+## DefaultMQProducerImpl topicPublishInfoTable (ConcurrentHashMap)
+
+![topicPublishInfoTable.png](readme/topicPublishInfoTable.png)
+
+![topicPublishInfoTable02.png](readme/topicPublishInfoTable02.png)
+
+![topicPublishInfo.png](readme/topicPublishInfo.png)
+
+topicPublishInfo -> topic、brokerName、queueId (no broker address)
+
+## MQ客户端实例
+
+```text
+        // update topic route info from name server
+        this.scheduledExecutorService.scheduleAtFixedRate(() -> {
+            try {
+                MQClientInstance.this.updateTopicRouteInfoFromNameServer();
+            } catch (Exception e) {
+                log.error("ScheduledTask updateTopicRouteInfoFromNameServer exception", e);
+            }
+        }, 10, this.clientConfig.getPollNameServerInterval(), TimeUnit.MILLISECONDS);
+```
+
+## 生产组
+
+```text
+    /**
+     * Producer group conceptually aggregates all producer instances of exactly same role, which is particularly
+     * important when transactional messages are involved. </p>
+     *
+     * For non-transactional messages, it does not matter as long as it's unique per process. </p>
+     *
+     * See <a href="http://rocketmq.apache.org/docs/core-concept/">core concepts</a> for more discussion.
+     */
+    private String producerGroup;
+```
+
+## 4.x client two kinds of MQProducer
+
+DefaultMQProducer TransactionMQProducer
+
+![two-kinds-of-producer.png](readme/two-kinds-of-producer.png)
+
+## serializable interface
+
+## single message send test
+
+```text
+// SendResult对象
+// sendStatus=SEND_OK, msgID=...., offsetMsgId=..., messageQueue=MessageQueue对象 MessageQueue [topic=FruitTopic, brokerName=broker-a， queueId=15], queueOffset=0
+SendResult [sendStatus=SEND_OK, msgId=7F000001141818B4AAC279F55F090000, offsetMsgId=C0A8016700002A9F0000000000180007, messageQueue=MessageQueue [topic=FruitTopic, brokerName=broker-a, queueId=15], queueOffset=0]
+// 说明netty客户端有服务端两个连接
+// 1. 和NameServer 9876端口的连接 (name server 默认端口)
+// 2. 和Broker 10911端口的连接 （broker remoting server默认端口，10911+1 HaServer端口，10909 fast remoting server端口）
+16:22:04.015 [NettyClientSelector_1] INFO RocketmqRemoting - closeChannel: close the connection to remote address[127.0.0.1:9876] result: true
+16:22:04.018 [NettyClientSelector_1] INFO RocketmqRemoting - closeChannel: close the connection to remote address[192.168.1.103:10911] result: true
+```
+
+![topic-message.png](readme/topic-message.png)
+
+## change default broker name in source code
+
+```
+public class BrokerIdentity {
+    private static final String DEFAULT_CLUSTER_NAME = "DefaultCluster";
+    // broker name local host name
+    @ImportantField
+    // private String brokerName = localHostName();
+    private String brokerName = 'broker-a';
+    ...
+```
+
+The broker[broker-a, 192.168.1.103:10911] boot success. serializeType=JSON and name server is localhost:9876
+
+
 ## RocketMQ Proxy 处理请求
 
 RocketMQ Proxy处理请求主要分为两步。
@@ -269,16 +405,19 @@ _from internet_
 ```
 
 ```text
-本文主要介绍RocketMQ的多端口监听机制，通过本文，你可以了解到Broker端源码中remotingServer和fastRemotingServer的区别，以及客户端配置中，vipChannelEnabled的作用。
+本文主要介绍RocketMQ的多端口监听机制，通过本文，
+你可以了解到Broker端源码中remotingServer和fastRemotingServer的区别，
+以及客户端配置中，vipChannelEnabled的作用。
 
 1 多端口监听
 
-在RocketMQ中，可以通过broker.conf配置文件中指定listenPort配置项来指定Broker监听客户端请求的端口，如果不指定，默认监听10911端口。listenPort=10911
+在RocketMQ中，可以通过broker.conf配置文件中指定listenPort配置项来指定Broker监听客户端请求的端口，
+如果不指定，默认监听10911端口。listenPort=10911
 不过，Broker启动时，实际上会监听3个端口：10909、10911、10912，如下所示：$ lsof -iTCP -nP | grep LISTEN
 
-java  1892656 tianshouzhi.robin   96u  IPv6 14889281  0t0  TCP *:10912 (LISTEN)
-java  1892656 tianshouzhi.robin  101u  IPv6 14889285  0t0  TCP *:10911 (LISTEN)
-java  1892656 tianshouzhi.robin  102u  IPv6 14889288  0t0  TCP *:10909 (LISTEN)
+java  1892656 .   96u  IPv6 14889281  0t0  TCP *:10912 (LISTEN)
+java  1892656 .  101u  IPv6 14889285  0t0  TCP *:10911 (LISTEN)
+java  1892656 .  102u  IPv6 14889288  0t0  TCP *:10909 (LISTEN)
 
 而其他两个端口是根据listenPort的值，动态计算出来的。这三个端口由Broker内部不同的组件使用，作用分别如下：
 remotingServer：监听listenPort配置项指定的监听端口，默认10911
@@ -287,8 +426,6 @@ HAService：监听端口为值为listenPort+1，即10912，该端口用于Broker
 
 本文主要聚焦于remotingServer和fastRemotingServer的区别：
 Broker端：remotingServer可以处理客户端所有请求，如：生产者发送消息的请求，消费者拉取消息的请求。fastRemotingServer功能基本与remotingServer相同，唯一不同的是不可以处理消费者拉取消息的请求。Broker在向NameServer注册时，只会上报remotingServer监听的listenPort端口。
-客户端：默认情况下，生产者发送消息是请求fastRemotingServer，我们也可以通过配置让其请求remotingServer；消费者拉取消息只能请求remotingServer。
-下面通过源码进行验证Broker端构建remotingServer和fastRemotingServer时的区别，以及客户端如何配置。
 ```
 
 _From Internet_
