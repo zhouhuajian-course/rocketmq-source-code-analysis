@@ -4,6 +4,32 @@
 
 ![producer.png](readme/producer.png)
 
+![consumer.png](readme/consumer.png)
+
+1. 注册的消息监听不同
+    
+    并发消费：consumer.registerMessageListener(new MessageListenerConcurrently() {}
+    顺序消费：consumer.registerMessageListener(new MessageListenerOrderly() {}
+
+2. 返回状态码不同
+
+3. 消息重新消费的逻辑不同
+
+    并发消费（重新消费的消息由Broker复制原消息，并丢入重试队列）：
+    消费者返回ConsumeConcurrentlyStatus.RECONSUME_LATER时， Broker会创建一条与原先消息属性相同的消息，并分配新的唯一的msgId，另外存储原消息的msgId，新消息会存入到commitLog文件中，并进入重试队列，拥有一个全新的队列偏移量，延迟5s后重新消费。如果消费者仍然返回RECONSUME_LATER，那么会重复上面的操作，直到重新消费maxReconsumerTimes次，当重新消费次数超过最大次数时，进入死信队列，消息消费成功。
+    顺序消费（重新消费不涉及Broker）：
+    消费者返回ConsumeOrderlyStatus.SUSPEND_CURRENT_QUEUE_A_MOMENT时，当前队列会挂起（此消息后面的消息停止消费，直到此消息完成消息重新消费的整个过程），然后此消息会在消费者的线程池中重新消费，即不需要Broker重新创建新的消息（不涉及重试队列），如果消息重新消费超过maxReconsumerTimes最大次数时，进入死信队列。当消息放入死信队列时，Broker服务器认为消息时消费成功的，继续消费该队列后续消息。
+
+4. 顺序消费设置自动提交
+
+5. 涉及的主题不同
+
+    RocketMQ有三种主题：NORMAL、RETRY、DLQ
+    并发消费：NORMAL、RETRY、DLQ
+    顺序消费：NORMAL、DLQ
+
+6. 顺序消费在拉取任务时需要在Broker服务器上锁定该消息队列
+
 ## 消费 Push模式 vs Pull模式
 
 RocketMQ推拉模式
