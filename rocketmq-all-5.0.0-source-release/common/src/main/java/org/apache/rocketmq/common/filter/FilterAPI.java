@@ -37,6 +37,7 @@ public class FilterAPI {
     }
 
     public static SubscriptionData buildSubscriptionData(String topic, String subString) throws Exception {
+        // 订阅数据
         SubscriptionData subscriptionData = new SubscriptionData();
         subscriptionData.setTopic(topic);
         subscriptionData.setSubString(subString);

@@ -879,27 +879,35 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
     public synchronized void start() throws MQClientException {
         switch (this.serviceState) {
+            // 刚刚创建 未启动
             case CREATE_JUST:
-                log.info("the consumer [{}] start beginning. messageModel={}, isUnitMode={}", this.defaultMQPushConsumer.getConsumerGroup(),
-                    this.defaultMQPushConsumer.getMessageModel(), this.defaultMQPushConsumer.isUnitMode());
+                // 消费者  [消费者组] 开始启动 消息模型=消息模型 是否单元模型
+                log.info("the consumer [{}] start beginning. messageModel={}, isUnitMode={}",
+                         this.defaultMQPushConsumer.getConsumerGroup(),
+                         this.defaultMQPushConsumer.getMessageModel(),
+                         this.defaultMQPushConsumer.isUnitMode());
                 this.serviceState = ServiceState.START_FAILED;
-
+                // 检查配置
                 this.checkConfig();
-
+                // 拷贝订阅
                 this.copySubscription();
-
+                // 消息模式 集群模式
                 if (this.defaultMQPushConsumer.getMessageModel() == MessageModel.CLUSTERING) {
                     this.defaultMQPushConsumer.changeInstanceNameToPID();
                 }
 
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
-
+                // 再平衡实现 设置消费者组
                 this.rebalanceImpl.setConsumerGroup(this.defaultMQPushConsumer.getConsumerGroup());
+                // 设置消息模型
                 this.rebalanceImpl.setMessageModel(this.defaultMQPushConsumer.getMessageModel());
+                // 设置分配消息队列策略
                 this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultMQPushConsumer.getAllocateMessageQueueStrategy());
+                // 设置mq客户端工厂
                 this.rebalanceImpl.setmQClientFactory(this.mQClientFactory);
-
+                // 拉接口封装 == null
                 if (this.pullAPIWrapper == null) {
+                    //
                     this.pullAPIWrapper = new PullAPIWrapper(
                         mQClientFactory,
                         this.defaultMQPushConsumer.getConsumerGroup(), isUnitMode());
@@ -1214,9 +1222,13 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
     public void subscribe(String topic, String subExpression) throws MQClientException {
         try {
+            // 订阅数据 过滤api 构建订阅数据
             SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(topic, subExpression);
+            // 再平衡实现 获取订阅 内部 放置 主题 订阅数据
             this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
+            // mq 客户端 工程 不为空
             if (this.mQClientFactory != null) {
+                // 发送 心跳给所有broker 加锁
                 this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
             }
         } catch (Exception e) {

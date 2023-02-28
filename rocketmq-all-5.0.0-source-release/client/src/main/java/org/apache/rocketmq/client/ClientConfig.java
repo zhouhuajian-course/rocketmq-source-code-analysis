@@ -33,6 +33,7 @@ import org.apache.rocketmq.remoting.protocol.RequestType;
 /**
  * Client Common configuration
  */
+// 客户端 客户端配置
 public class ClientConfig {
     public static final String SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY = "com.rocketmq.sendMessageWithVIPChannel";
     public static final String DECODE_READ_BODY = "com.rocketmq.read.body";

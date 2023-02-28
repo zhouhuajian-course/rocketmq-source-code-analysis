@@ -1,5 +1,74 @@
 # RocketMQ 源码分析
 
+## Controller
+
+NameServer Broker 源码中都有一个 Controller
+
+用来管理 NameServer Broker 里面的相关组件的生命周期 启动 关闭 等等
+
+## Long Polling 长轮询
+
+消费 push 模式 本质上是 pull 模式 
+
+参考 HTTP Long Polling
+
+HTTP Long Polling is a variation of standard polling that emulates a server pushing messages to a client (or browser) efficiently. Long polling was one of the first techniques developed to allow a server to ‘push’ data to a client and because of its longevity, it has near-ubiquitous support in all browsers and web technologies.
+
+## ConsumeFromWhere
+
+```text
+    /**
+     * Consuming point on consumer booting.
+     * </p>
+     *
+     * There are three consuming points:
+     * <ul>
+     * <li>
+     * <code>CONSUME_FROM_LAST_OFFSET</code>: consumer clients pick up where it stopped previously.
+     * If it were a newly booting up consumer client, according aging of the consumer group, there are two
+     * cases:
+     * <ol>
+     * <li>
+     * if the consumer group is created so recently that the earliest message being subscribed has yet
+     * expired, which means the consumer group represents a lately launched business, consuming will
+     * start from the very beginning;
+     * </li>
+     * <li>
+     * if the earliest message being subscribed has expired, consuming will start from the latest
+     * messages, meaning messages born prior to the booting timestamp would be ignored.
+     * </li>
+     * </ol>
+     * </li>
+     * <li>
+     * <code>CONSUME_FROM_FIRST_OFFSET</code>: Consumer client will start from earliest messages available.
+     * </li>
+     * <li>
+     * <code>CONSUME_FROM_TIMESTAMP</code>: Consumer client will start from specified timestamp, which means
+     * messages born prior to {@link #consumeTimestamp} will be ignored
+     * </li>
+     * </ul>
+     */
+    private ConsumeFromWhere consumeFromWhere = ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET;
+```
+
+## 消费 集群模式 vs 广播模式
+
+```text
+    /**
+     * Message model defines the way how messages are delivered to each consumer clients.
+     * </p>
+     *
+     * RocketMQ supports two message models: clustering and broadcasting. If clustering is set, consumer clients with
+     * the same {@link #consumerGroup} would only consume shards of the messages subscribed, which achieves load
+     * balances; Conversely, if the broadcasting is set, each consumer client will consume all subscribed messages
+     * separately.
+     * </p>
+     *
+     * This field defaults to clustering.
+     */
+    private MessageModel messageModel = MessageModel.CLUSTERING;
+```
+
 ## 消费 并发消费模式 vs 顺序消费模式
 
 ![producer.png](readme/producer.png)

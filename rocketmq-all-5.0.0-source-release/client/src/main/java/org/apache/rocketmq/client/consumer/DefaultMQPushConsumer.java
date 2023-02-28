@@ -61,6 +61,7 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
  * <strong>Thread Safety:</strong> After initialization, the instance can be regarded as thread-safe.
  * </p>
  */
+// 客户端 消费者 默认 mq push 消费者
 public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsumer {
 
     private final InternalLogger log = ClientLogger.getLog();
@@ -68,6 +69,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     /**
      * Internal implementation. Most of the functions herein are delegated to it.
      */
+    // 内部实现 在此大多数函数 都会 被委派给 默认MQpush消费者实现
     protected final transient DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
 
     /**
@@ -77,6 +79,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      *
      * See <a href="http://rocketmq.apache.org/docs/core-concept/">here</a> for further discussion.
      */
+    // 字符串 消费者组
     private String consumerGroup;
 
     /**
@@ -91,6 +94,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      *
      * This field defaults to clustering.
      */
+    // 消息模型 集群
     private MessageModel messageModel = MessageModel.CLUSTERING;
 
     /**
@@ -132,52 +136,62 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * Implying Seventeen twelve and 01 seconds on December 23, 2013 year<br>
      * Default backtracking consumption time Half an hour ago.
      */
+    //  消费时间戳
     private String consumeTimestamp = UtilAll.timeMillisToHumanString3(System.currentTimeMillis() - (1000 * 60 * 30));
 
     /**
      * Queue allocation algorithm specifying how message queues are allocated to each consumer clients.
      */
+    // 分配消息队列策略
     private AllocateMessageQueueStrategy allocateMessageQueueStrategy;
 
     /**
      * Subscription relationship
      */
+    // 订阅关系 map
     private Map<String /* topic */, String /* sub expression */> subscription = new HashMap<String, String>();
 
     /**
      * Message listener
      */
+    // 消息监听器
     private MessageListener messageListener;
 
     /**
      * Offset Storage
      */
+    // 偏移存储
     private OffsetStore offsetStore;
 
     /**
      * Minimum consumer thread number
      */
+    // 消费线程最少 20
     private int consumeThreadMin = 20;
 
     /**
      * Max consumer thread number
      */
+    // 消费线程最多 20
     private int consumeThreadMax = 20;
 
     /**
      * Threshold for dynamic adjustment of the number of thread pool
      */
+    // 调整线程池数量阈值
     private long adjustThreadPoolNumsThreshold = 100000;
 
     /**
      * Concurrently max span offset.it has no effect on sequential consumption
      */
+    // 并发消费最大跨度
     private int consumeConcurrentlyMaxSpan = 2000;
 
     /**
      * Flow control threshold on queue level, each message queue will cache at most 1000 messages by default,
      * Consider the {@code pullBatchSize}, the instantaneous value may exceed the limit
      */
+    //
     private int pullThresholdForQueue = 1000;
 
     /**
@@ -262,6 +276,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     /**
      * Maximum amount of time in minutes a message may block the consuming thread.
      */
+    // 消费超时
     private long consumeTimeout = 15;
 
     /**
@@ -285,6 +300,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private TraceDispatcher traceDispatcher = null;
 
     // force to use client rebalance
+    // 客户端 再平衡
     private boolean clientRebalance = true;
 
     /**
@@ -408,17 +424,25 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * @param enableMsgTrace Switch flag instance for message trace.
      * @param customizedTraceTopic The name value of message trace topic.If you don't config,you can use the default trace topic name.
      */
-    public DefaultMQPushConsumer(final String namespace, final String consumerGroup, RPCHook rpcHook,
-        AllocateMessageQueueStrategy allocateMessageQueueStrategy, boolean enableMsgTrace, final String customizedTraceTopic) {
+    // 命名空间 消费者组 rpc钩子 分配消息队列策略 开启消息追踪 自定义追踪主题
+    public DefaultMQPushConsumer(final String namespace,
+                                 final String consumerGroup,
+                                 RPCHook rpcHook,
+                                 AllocateMessageQueueStrategy allocateMessageQueueStrategy,
+                                 boolean enableMsgTrace,
+                                 final String customizedTraceTopic) {
         this.consumerGroup = consumerGroup;
         this.namespace = namespace;
         this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;
         defaultMQPushConsumerImpl = new DefaultMQPushConsumerImpl(this, rpcHook);
+        // 如果开启消息追踪
         if (enableMsgTrace) {
             try {
+                // 异步追踪分发器
                 AsyncTraceDispatcher dispatcher = new AsyncTraceDispatcher(consumerGroup, TraceDispatcher.Type.CONSUME, customizedTraceTopic, rpcHook);
                 dispatcher.setHostConsumer(this.getDefaultMQPushConsumerImpl());
                 traceDispatcher = dispatcher;
+                // this 获取默认mq push消费组实现 注册消费消息钩子
                 this.getDefaultMQPushConsumerImpl().registerConsumeMessageHook(
                     new ConsumeMessageTraceHookImpl(traceDispatcher));
             } catch (Throwable e) {
@@ -733,8 +757,11 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      */
     @Override
     public void start() throws MQClientException {
+        // 设置消费者组
         setConsumerGroup(NamespaceUtil.wrapNamespace(this.getNamespace(), this.consumerGroup));
+        // 实际启动
         this.defaultMQPushConsumerImpl.start();
+        // 追踪分发器
         if (null != traceDispatcher) {
             try {
                 traceDispatcher.start(this.getNamesrvAddr(), this.getAccessChannel());
@@ -794,6 +821,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      */
     @Override
     public void subscribe(String topic, String subExpression) throws MQClientException {
+        // 订阅 带有命名空间 主题 子表达式
         this.defaultMQPushConsumerImpl.subscribe(withNamespace(topic), subExpression);
     }
 
