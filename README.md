@@ -28,6 +28,40 @@ https://www.gnu.org/software/bash/manual/bash.html#Job-Control-Builtins
 
 ## PTS
 
+```shell
+# 会话1
+[root@centos /opt/rmq]# sh count.sh 
+1
+2
+3
+# 会话2
+[root@centos /opt/rmq]# sh count.sh 
+1
+2
+3
+# 会话3
+[root@centos /root]# ps -ef | grep count.sh
+root      45773  43956  0 02:49 pts/0    00:00:00 sh count.sh
+root      47843  44554  0 03:06 pts/1    00:00:00 sh count.sh
+root      47948  47859  0 03:06 pts/2    00:00:00 grep --color=auto count.sh
+[root@centos /root]# ll /proc/45773/fd
+total 0
+lrwx------. 1 root root 64 Mar  1 02:49 0 -> /dev/pts/0
+lrwx------. 1 root root 64 Mar  1 02:49 1 -> /dev/pts/0
+lrwx------. 1 root root 64 Mar  1 02:49 2 -> /dev/pts/0
+lr-x------. 1 root root 64 Mar  1 02:49 255 -> /opt/rmq/count.sh
+[root@centos /root]# ll /proc/47843/fd
+total 0
+lrwx------. 1 root root 64 Mar  1 03:07 0 -> /dev/pts/1
+lrwx------. 1 root root 64 Mar  1 03:07 1 -> /dev/pts/1
+lrwx------. 1 root root 64 Mar  1 03:06 2 -> /dev/pts/1
+lr-x------. 1 root root 64 Mar  1 03:07 255 -> /opt/rmq/count.sh
+```
+
+/dev/pts/0 会话1伪终端
+/dev/pts/1 会话2伪终端
+/dev/pts/...
+
 ```text
 Nothing is stored in /dev/pts. This filesystem lives purely in memory.
 
