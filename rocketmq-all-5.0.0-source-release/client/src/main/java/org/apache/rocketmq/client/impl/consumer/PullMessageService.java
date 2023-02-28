@@ -126,6 +126,7 @@ public class PullMessageService extends ServiceThread {
         while (!this.isStopped()) {
             try {
                 MessageRequest messageRequest = this.messageRequestQueue.take();
+                // PullRequest
                 if (messageRequest.getMessageRequestMode() == MessageRequestMode.POP) {
                     this.popMessage((PopRequest)messageRequest);
                 } else {

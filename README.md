@@ -1,5 +1,325 @@
 # RocketMQ 源码分析
 
+## nohup
+
+## . source (command)
+
+4.1 Bourne Shell Builtins
+
+. (a period)
+
+`. filename [arguments]`
+
+Read and execute commands from the filename argument in the current shell context. If filename does not contain a slash, the PATH variable is used to find filename, but filename does not need to be executable. When Bash is not in POSIX mode, it searches the current directory if filename is not found in $PATH. If any arguments are supplied, they become the positional parameters when filename is executed. Otherwise the positional parameters are unchanged. If the -T option is enabled, . inherits any trap on DEBUG; if it is not, any DEBUG trap string is saved and restored around the call to ., and . unsets the DEBUG trap while it executes. If -T is not set, and the sourced file changes the DEBUG trap, the new value is retained when . completes. The return status is the exit status of the last command executed, or zero if no commands are executed. If filename is not found, or cannot be read, the return status is non-zero. This builtin is equivalent to source.
+
+## & (control operator)
+
+https://www.gnu.org/software/bash/manual/bash.html
+
+If a command is terminated by the control operator ‘&’, the shell executes the command asynchronously in a subshell. This is known as executing the command in the background, and these are referred to as asynchronous commands. The shell does not wait for the command to finish, and the return status is 0 (true). When job control is not active (see Job Control), the standard input for asynchronous commands, in the absence of any explicit redirections, is redirected from /dev/null.
+
+A subshell is a copy of the shell process.
+
+subshell shell子进程
+
+If a command is followed by a ‘&’ and job control is not active, the default standard input for the command is the empty file /dev/null. Otherwise, the invoked command inherits the file descriptors of the calling shell as modified by redirections.
+
+https://www.gnu.org/software/bash/manual/bash.html#Job-Control-Builtins
+
+## PTS
+
+```text
+Nothing is stored in /dev/pts. This filesystem lives purely in memory.
+
+Entries in /dev/pts are pseudo-terminals (pty for short). Unix kernels have a generic notion of terminals. A terminal provides a way for applications to display output and to receive input through a terminal device. A process may have a controlling terminal — for a text mode application, this is how it interacts with the user.
+
+Terminals can be either hardware terminals (“tty”, short for “teletype”) or pseudo-terminals (“pty”). Hardware terminals are connected over some interface such as a serial port (ttyS0, …) or USB (ttyUSB0, …) or over a PC screen and keyboard (tty1, …). Pseudo-terminals are provided by a terminal emulator, which is an application. Some types of pseudo-terminals are:
+
+GUI applications such as xterm, gnome-terminal, konsole, … transform keyboard and mouse events into text input and display output graphically in some font.
+Multiplexer applications such as screen and tmux relay input and output from and to another terminal, to decouple text mode applications from the actual terminal.
+Remote shell applications such as sshd, telnetd, rlogind, … relay input and output between a remote terminal on the client and a pty on the server.
+If a program opens a terminal for writing, the output from that program appears on the terminal. It is common to have several programs outputting to a terminal at the same time, though this can be confusing at times as there is no way to tell which part of the output came from which program. Background processes that try to write to their controlling terminal may be automatically suspended by a SIGTTOU signal.
+
+If a program opens a terminal for reading, the input from the user is passed to that program. If multiple programs are reading from the same terminal, each character is routed independently to one of the programs; this is not recommended. Normally there is only a single program actively reading from the terminal at a given time; programs that try to read from their controlling terminal while they are not in the foreground are automatically suspended by a SIGTTIN signal.
+
+To experiment, run tty in a terminal to see what the terminal device is. Let's say it's /dev/pts/42. In a shell in another terminal, run echo hello >/dev/pts/42: the string hello will be displayed on the other terminal. Now run cat /dev/pts/42 and type in the other terminal. To kill that cat command (which will make the other terminal hard to use), press Ctrl+C.
+
+Writing to another terminal is occasionally useful to display a notification; for example the write command does that. Reading from another terminal is not normally done.
+```
+
+## 重定向测试
+
+```shell
+# 会话1
+[root@centos /opt/rmq]# sh count.sh 
+1
+2
+3
+# 会话2
+[root@centos /opt/rmq]# ps -ef | grep count.sh
+root      45773  43956  0 02:49 pts/0    00:00:00 sh count.sh
+root      45820  44554  0 02:49 pts/1    00:00:00 grep --color=auto count.sh
+[root@centos /opt/rmq]# ll /proc/45773/fd
+total 0
+lrwx------. 1 root root 64 Mar  1 02:49 0 -> /dev/pts/0
+lrwx------. 1 root root 64 Mar  1 02:49 1 -> /dev/pts/0
+lrwx------. 1 root root 64 Mar  1 02:49 2 -> /dev/pts/0
+lr-x------. 1 root root 64 Mar  1 02:49 255 -> /opt/rmq/count.sh
+```
+
+```shell
+# 会话1
+[root@centos /opt/rmq]# sh count.sh > count.txt
+# 会话2
+[root@centos /opt/rmq]# tail -f count.txt 
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+^C
+[root@centos /opt/rmq]# ps -ef | grep count.sh
+root      44844  43956  0 02:41 pts/0    00:00:00 sh count.sh
+root      45045  44554  0 02:42 pts/1    00:00:00 grep --color=auto count.sh
+[root@centos /opt/rmq]# ll /proc/44844/fd
+total 0
+lrwx------. 1 root root 64 Mar  1 02:44 0 -> /dev/pts/0
+l-wx------. 1 root root 64 Mar  1 02:44 1 -> /opt/rmq/count.txt
+lrwx------. 1 root root 64 Mar  1 02:42 2 -> /dev/pts/0
+lr-x------. 1 root root 64 Mar  1 02:44 255 -> /opt/rmq/count.sh
+```
+
+```shell
+# 会话1
+[root@centos /opt/rmq]# sh count.sh > count.txt 2>&1
+# 会话2
+[root@centos /opt/rmq]# ps -ef | grep count.sh
+root      45319  43956  0 02:45 pts/0    00:00:00 sh count.sh
+root      45453  44554  0 02:46 pts/1    00:00:00 grep --color=auto count.sh
+[root@centos /opt/rmq]# ll /proc/45319/fd
+total 0
+lrwx------. 1 root root 64 Mar  1 02:46 0 -> /dev/pts/0
+l-wx------. 1 root root 64 Mar  1 02:46 1 -> /opt/rmq/count.txt
+l-wx------. 1 root root 64 Mar  1 02:46 2 -> /opt/rmq/count.txt
+lr-x------. 1 root root 64 Mar  1 02:46 255 -> /opt/rmq/count.sh
+```
+
+```shell
+# 会话1
+[root@centos /opt/rmq]# sh count.sh 2>&1 > count.txt
+# 会话2
+[root@centos /opt/rmq]# ps -ef | grep count.sh
+root      45559  43956  0 02:47 pts/0    00:00:00 sh count.sh
+root      45575  44554  0 02:47 pts/1    00:00:00 grep --color=auto count.sh
+[root@centos /opt/rmq]# ll /proc/45559/fd
+total 0
+lrwx------. 1 root root 64 Mar  1 02:47 0 -> /dev/pts/0
+l-wx------. 1 root root 64 Mar  1 02:47 1 -> /opt/rmq/count.txt
+lrwx------. 1 root root 64 Mar  1 02:47 2 -> /dev/pts/0
+lr-x------. 1 root root 64 Mar  1 02:47 255 -> /opt/rmq/count.sh
+```
+
+## 重定向 redirections 
+
+redirection operator
+
+```text
+< 默认标准输入 0
+> 默认标准输出 1
+
+重定向输入 [n]<word
+重定向输出 [n]>[|]word
+```
+
+https://www.gnu.org/software/bash/manual/html_node/Redirections.html
+
+https://837468220.gitbooks.io/man_bash_chinese/content/zhong_ding_541128_redirection/duplicating_file_descriptors_fu_zhi_wen_jian_miao_.html
+
+2>&1表明将文件描述2（标准错误输出）的内容重定向到文件描述符1（标准输出），为什么1前面需要&？当没有&时，1会被认为是一个普通的文件，有&表示重定向的目标不是一个文件，而是一个文件描述符。
+
+类似 C语言 解引用 
+
+/dev/null黑洞文件，Linux系统的回收站和垃圾箱
+
+程序通过描述符访问文件，可以是常规文件，也可以是设备文件。
+
+FD file descriptors ，文件描述符，又称文件句柄  
+进程使用文件描述符来管理打开的文件。  
+FD是从0-255， 0代表stdin标准输入、1代表stdout标准输出、2代表stderr标准错误；3-255代表用户编辑的文件的绝对路径。  
+
+![process-file-descriptor.png](readme/process-file-descriptor.png)
+![process-file-descriptor-02.png](readme/process-file-descriptor-02.png)
+
+总结  
+FD是访问文件的标识，即链接文件，它代表着文件的绝对路径，使程序在使用文件时直接调用FD，从而省去了冗余的绝对路径。  
+
+```shell
+示例
+1）通过一个终端，打开一个文本。
+[root@localhost ~]# vim 1.txt
+2）通过另一个终端，查询文本程序的进程号
+[root@localhost ~]# ps aux| grep vim
+root 3906 1.0 0.2 149748 5484 pts/0 S+ 21:02 0:00 vim 1.txt
+3）在/proc目录中查看文本程序的FD
+[root@localhost ~]# ls /proc/3906/fd/
+0 1 2 3
+[root@localhost ~]# ls -l /proc/3906/fd/
+总用量 0
+lrwx------. 1 root root 64 12月 4 21:04 0 -> /dev/pts/0
+lrwx------. 1 root root 64 12月 4 21:04 1 -> /dev/pts/0
+lrwx------. 1 root root 64 12月 4 21:03 2 -> /dev/pts/0
+lrwx------. 1 root root 64 12月 4 21:04 3 -> /root/.1.txt.swp
+4）总结
+0 -> /dev/pts/0 标椎输入
+1 -> /dev/pts/0 标准输出
+2 -> /dev/pts/0 标准错误
+3 -> /root/.1.txt.swp 常规文件
+```
+
+
+3.6 重定向
+
+在执行命令之前，它的输入和输出可能会 使用由 shell 解释的特殊符号来 重定向。重定向允许复制、打开、关闭命令的文件句柄，使之指向不同的文件，并且可以更改命令读取和写入的文件。重定向也可用于修改当前 shell 执行环境中的文件句柄。以下重定向运算符可以在简单命令之前或出现在任何地方，也可以在命令之后。重定向按照它们出现的顺序从左到右处理。
+
+每个可能以文件描述符编号开头的重定向都可以以 { varname } 形式的单词开头。在这种情况下，对于除 >&- 和 <&- 之外的每个重定向运算符，shell 将分配一个大于 10 的文件描述符并将其分配给 { varname }。如果 >&- 或 <&- 前面有 { varname }，则varname的值定义要关闭的文件描述符。如果提供了 { varname }，重定向将持续超出命令的范围，允许 shell 程序员手动管理文件描述符的生命周期。shellvarredir_close选项管理此行为（请参阅The Shopt Builtin）。
+
+在下面的描述中，如果省略文件描述符编号，并且重定向操作符的第一个字符是'<'，重定向指向标准输入（文件描述符 0）。如果重定向运算符的第一个字符是 '>'，重定向指向标准输出（文件描述符 1）。
+
+以下描述中重定向运算符后面的词，除非另有说明，否则会进行大括号扩展、波浪符扩展、参数扩展、命令替换、算术扩展、引号删除、文件名扩展和分词。如果扩展到多个单词，Bash 会报告错误。
+
+## Push Consumer PullCallback
+
+```text
+        PullCallback pullCallback = new PullCallback() {
+            @Override
+            public void onSuccess(PullResult pullResult) {
+                if (pullResult != null) {
+                    pullResult = DefaultMQPushConsumerImpl.this.pullAPIWrapper.processPullResult(pullRequest.getMessageQueue(), pullResult,
+                        subscriptionData);
+
+                    switch (pullResult.getPullStatus()) {
+                        case FOUND:
+                            long prevRequestOffset = pullRequest.getNextOffset();
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+                            long pullRT = System.currentTimeMillis() - beginTimestamp;
+                            DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullRT(pullRequest.getConsumerGroup(),
+                                pullRequest.getMessageQueue().getTopic(), pullRT);
+
+                            long firstMsgOffset = Long.MAX_VALUE;
+                            if (pullResult.getMsgFoundList() == null || pullResult.getMsgFoundList().isEmpty()) {
+                                DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                            } else {
+                                firstMsgOffset = pullResult.getMsgFoundList().get(0).getQueueOffset();
+
+                                DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullTPS(pullRequest.getConsumerGroup(),
+                                    pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
+
+                                boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
+                                DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
+                                    pullResult.getMsgFoundList(),
+                                    processQueue,
+                                    pullRequest.getMessageQueue(),
+                                    dispatchToConsume);
+
+                                if (DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval() > 0) {
+                                    DefaultMQPushConsumerImpl.this.executePullRequestLater(pullRequest,
+                                        DefaultMQPushConsumerImpl.this.defaultMQPushConsumer.getPullInterval());
+                                } else {
+                                    DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                                }
+                            }
+
+                            if (pullResult.getNextBeginOffset() < prevRequestOffset
+                                || firstMsgOffset < prevRequestOffset) {
+                                log.warn(
+                                    "[BUG] pull message result maybe data wrong, nextBeginOffset: {} firstMsgOffset: {} prevRequestOffset: {}",
+                                    pullResult.getNextBeginOffset(),
+                                    firstMsgOffset,
+                                    prevRequestOffset);
+                            }
+
+                            break;
+                        case NO_NEW_MSG:
+                        case NO_MATCHED_MSG:
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+
+                            DefaultMQPushConsumerImpl.this.correctTagsOffset(pullRequest);
+
+                            DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                            break;
+                        case OFFSET_ILLEGAL:
+                            log.warn("the pull request offset illegal, {} {}",
+                                pullRequest.toString(), pullResult.toString());
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+
+                            pullRequest.getProcessQueue().setDropped(true);
+                            DefaultMQPushConsumerImpl.this.executeTaskLater(new Runnable() {
+
+                                @Override
+                                public void run() {
+                                    try {
+                                        DefaultMQPushConsumerImpl.this.offsetStore.updateOffset(pullRequest.getMessageQueue(),
+                                            pullRequest.getNextOffset(), false);
+
+                                        DefaultMQPushConsumerImpl.this.offsetStore.persist(pullRequest.getMessageQueue());
+
+                                        DefaultMQPushConsumerImpl.this.rebalanceImpl.removeProcessQueue(pullRequest.getMessageQueue());
+
+                                        log.warn("fix the pull request offset, {}", pullRequest);
+                                    } catch (Throwable e) {
+                                        log.error("executeTaskLater Exception", e);
+                                    }
+                                }
+                            }, 10000);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+
+            @Override
+            public void onException(Throwable e) {
+                if (!pullRequest.getMessageQueue().getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+                    log.warn("execute the pull request exception", e);
+                }
+
+                DefaultMQPushConsumerImpl.this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
+            }
+        };
+```
+
+## Push Consumer vs POP Consumer (5.0)
+
+```text
+ public void run() {
+        log.info(this.getServiceName() + " service started");
+
+        while (!this.isStopped()) {
+            try {
+                MessageRequest messageRequest = this.messageRequestQueue.take();
+                if (messageRequest.getMessageRequestMode() == MessageRequestMode.POP) {
+                    this.popMessage((PopRequest)messageRequest);
+                } else {
+                    this.pullMessage((PullRequest)messageRequest);
+                }
+            } catch (InterruptedException ignored) {
+            } catch (Exception e) {
+                log.error("Pull Message Service Run Method exception", e);
+            }
+        }
+
+        log.info(this.getServiceName() + " service end");
+    }
+```
+
 ## Controller
 
 NameServer Broker 源码中都有一个 Controller
@@ -9,6 +329,11 @@ NameServer Broker 源码中都有一个 Controller
 ## Long Polling 长轮询
 
 消费 push 模式 本质上是 pull 模式 
+
+客户端发送 pull message 请求 如果服务端没消息响应 则维持 请求连接 一定时间，如果这段时间内有 消息 响应，
+那么马上响应 客户端 拉消息请求
+
+在客户端代码中，看起来像是 服务端 推数据 给客户端 所以叫 推模式
 
 参考 HTTP Long Polling
 
@@ -2566,4 +2891,4 @@ rocketmq-client 对应的是 RocketMQ 旧有的客户端，沿袭 RocketMQ 的�
 
 ## Articles
 
-+ 全面升级 —— Apache RocketMQ 5.0 SDK 的新面貌 https://developer.aliyun.com/article/797655
++ 全面升级 —— Apache RocketMQ 5.0 SDK 的新面貌 https://developer.aliyun.com/article/797655__
