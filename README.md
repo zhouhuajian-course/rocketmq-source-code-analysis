@@ -1,5 +1,158 @@
 # RocketMQ 源码分析
 
+## VM选项
+
+三种：
+
+```text
+-  : 标准VM选项，VM规范的选项
+-X : 非标准VM选项，不保证所有VM支持
+-XX: 高级选项，高级特性，但属于不稳定的选项
+
+再说这几个参数，其语义分别是：
+-Xmx: 堆的最大内存数，等同于-XX:MaxHeapSize-Xms: 堆的初始化初始化大小-Xmn: 堆中新生代初始及最大大小，如果需要进一步细化，初始化大小用-XX:NewSize，最大大小用-XX:MaxNewSize -Xss: 线程栈大小，等同于-XX:ThreadStackSize
+
+命名应该非简称，助记的话： memory maximum, memory startup, memory nursery/new, stack size. 
+
+X可以是希腊字母X，文化里代表着未知数，代表着可被赋予值的任意数，
+M可以是memory，也可以是 maximum，
+S可以是size，也可以是 startup和 stack ，
+n则可以是 nursery，也可以是new。
+
+对于具体含义的猜测：
+最开始只有 -Xms 的参数，表示 `初始` memory size(m表示memory，s表示size)；
+紧接是参数 -Xms，为了对齐三字符，压缩了其表示形式，采用计算机中约定表示方式: 用 x 表示 “大”，因此 -Xmx 中的 m 应当还是 memory。既然有了最大内存的概念，那么一开始的 -Xms 所表示的 `初始` 内存也就有了一个 `最小` 内存的概念（其实常用的做法中初始内存采用的也就是最小内存）。如果不对齐参数长度的话，其表示应当是 -Xmsx
+```
+
+## JVM 参数
+
+JAVA_OPT="${JAVA_OPT} -server -Xms4g -Xmx4g -Xmn2g -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=320m"
+
+https://docs.oracle.com/javase/8/
+https://docs.oracle.com/javase/8/docs/technotes/tools/unix/java.html#BGBCIEFC
+https://docs.oracle.com/javase/8/docs/technotes/guides/vm/server-class.html
+
+jps、jinfo -flags ...
+
+JAVA_OPT="${JAVA_OPT} -server -Xms256m -Xmx256m -Xmn128m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=320m"
+
+```text
+-XX:MaxMetaspaceSize=size
+    最大本地内存可以分配给类元数据的空间大小 默认 大小无限制
+    Sets the maximum amount of native memory that can be allocated for class metadata. By default, the size is not limited. 
+    元数据大小 根据应用本身、其他运行的应用和系统可用内存 决定
+    The amount of metadata for an application depends on the application itself, other running applications, and the amount of memory available on the system.
+    
+    The following example shows how to set the maximum class metadata size to 256 MB:
+    
+    -XX:MaxMetaspaceSize=256m
+
+-XX:MetaspaceSize=size
+     类元数据空间大小 空间溢出会第一时间触发垃圾回收 
+    Sets the size of the allocated class metadata space that will trigger a garbage collection the first time it is exceeded. 
+    垃圾回收的阈值会增加或减少 依赖元数据使用数量
+    This threshold for a garbage collection is increased or decreased depending on the amount of metadata used. 
+    默认大小根据平台
+    The default size depends on the platform.
+
+-Xmnsize
+     新生代 初始和最大堆大小 
+    Sets the initial and maximum size (in bytes) of the heap for the young generation (nursery). Append the letter k or K to indicate kilobytes, m or M to indicate megabytes, g or G to indicate gigabytes.
+    新生代区域 给新对象使用 GC处理这块区域 比其他区域跟频繁
+    The young generation region of the heap is used for new objects. GC is performed in this region more often than in other regions. 
+    如果新生代大小太小 minor 垃圾回收 会被执行很多次
+    如果新生代大小太大 只有 full 垃圾回收会被执行 这会花费很长时间去完成垃圾回收
+    If the size for the young generation is too small, then a lot of minor garbage collections will be performed. If the size is too large, then only full garbage collections will be performed, which can take a long time to complete. 
+    Oracle推荐 让新生代大小保持在 总堆大小的1/2和1/4之间
+    Oracle recommends that you keep the size for the young generation between a half and a quarter of the overall heap size.
+    
+    The following examples show how to set the initial and maximum size of young generation to 256 MB using various units: 
+    -Xmn256m
+    -Xmn262144k
+    -Xmn268435456
+    除了使用 -Xmn 设置 初始化和最大新生代堆大小 还可以使用-XX:NewSize设置初始化 -XX:MaxNewSize设置最大大小
+    Instead of the -Xmn option to set both the initial and maximum size of the heap for the young generation, you can use -XX:NewSize to set the initial size and -XX:MaxNewSize to set the maximum size.
+
+-Xmxsize          
+    最大内存分配池大小 必须是1024的倍数并大于2MB
+    Specifies the maximum size (in bytes) of the memory allocation pool in bytes. This value must be a multiple of 1024 and greater than 2 MB. Append the letter k or K to indicate kilobytes, m or M to indicate megabytes, g or G to indicate gigabytes. 
+    默认值 运行时基于系统配置选择 对于服务端发布 -Xms 和 -Xmx 通常设置为相同值
+    The default value is chosen at runtime based on system configuration. For server deployments, -Xms and -Xmx are often set to the same value. See the section "Ergonomics" in Java SE HotSpot Virtual Machine Garbage Collection Tuning Guide at http://docs.oracle.com/javase/8/docs/technotes/guides/vm/gctuning/index.html.
+    
+    The following examples show how to set the maximum allowed size of allocated memory to 80 MB using various units:
+    -Xmx83886080
+    -Xmx81920k
+    -Xmx80m
+    等同于-XX:MaxHeapSize
+    The -Xmx option is equivalent to -XX:MaxHeapSize.
+
+-Xmssize             
+
+    最小/初始化堆内存大小 必须是1024的倍数并且大于1MB  
+    Sets the minimum and the initial size (in bytes) of the heap. This value must be a multiple of 1024 and greater than 1 MB. Append the letter k or K to indicate kilobytes, m or M to indicate megabytes, g or G to indicate gigabytes.
+    
+    The following examples show how to set the size of allocated memory to 6 MB using various units:
+    -Xms6291456
+    -Xms6144k
+    -Xms6m
+    如果不设置这个选项 初始化大小会被设置为跟 老年代+新生代 的大小
+    新生代堆内存可使用 -Xmn或-XX:NewSize 选项进行设置
+    If you do not set this option, then the initial size will be set as the sum of the sizes allocated for the old generation and the young generation. The initial size of the heap for the young generation can be set using the -Xmn option or the -XX:NewSize option.
+    注意 -XX:InitalHeapSize 选项也能被用来设置初始化堆大小 如果它出现在-Xms之后，那么初始化堆大小会被设置为 -XX:InitalHeapSize的大小
+    Note that the -XX:InitalHeapSize option can also be used to set the initial heap size. If it appears after -Xms on the command line, then the initial heap size gets set to the value specified with -XX:InitalHeapSize.
+
+-client
+    Selects the Java HotSpot Client VM. The 64-bit version of the Java SE Development Kit (JDK) currently ignores this option and instead uses the Server JVM.
+    
+    For default JVM selection, see Server-Class Machine Detection at
+    http://docs.oracle.com/javase/8/docs/technotes/guides/vm/server-class.html
+    
+-server
+    Selects the Java HotSpot Server VM. The 64-bit version of the JDK supports only the Server VM, so in that case the option is implicit.
+    
+    For default JVM selection, see Server-Class Machine Detection at
+    http://docs.oracle.com/javase/8/docs/technotes/guides/vm/server-class.html
+    
+可以通过-server或-client设置jvm的运行参数。
+它们的区别是Server VM的初始堆空间会大一些，默认使用的是并行垃圾回收器，启动慢运行快。
+Client VM相对来讲会保守一些，初始堆空间会小一些，使用串行的垃圾回收器，它的目标是为了让JVM的启动速度更快，但运行速度会比Serverm模式慢些。
+JVM在启动的时候会根据硬件和操作系统自动选择使用Server还是Client类型的 JVM。
+
+32位操作系统
+
+    如果是Windows系统，不论硬件配置如何，都默认使用Client类型的JVM。
+    如果是其他操作系统上，机器配置有2GB以上的内存同时有2个以上CPU的话默认使用server模式，否则使用client模式。
+
+64位操作系统
+
+    只有server类型，不支持client类型。
+```
+
+Server-Class Machine Detection
+Starting with Java SE 5.0, when an application starts up, the launcher can attempt to detect whether the application is running on a "server-class" machine and, if so, use the Java HotSpot Server Virtual Machine (server VM) instead of the Java HotSpot Client Virtual Machine (client VM). The aim is to improve performance even if no one configures the VM to reflect the application it's running. In general, the server VM starts up more slowly than the client VM, but over time runs more quickly.
+
+
+## Java 系统属性 System Properties 
+
+https://docs.oracle.com/javase/tutorial/essential/environment/sysprop.html
+
+...
+"user.dir"	User working directory
+"user.home"	User home directory
+"user.name"	User account name
+
+修改 user.home，临时修改，当次启动有效
+
+java -Duser.home=... ...
+
+## trap 捕获信号
+
+## SIGHUP
+
+SIGHUP，hang up ，挂断。本信号在用户终端连接(正常或非正常)结束时发出, 通常是在终端的控制进程结束时, 通知同一session内的各个作业, 这时它们与控制终端不再关联。
+登录Linux时，系统会分配给登录用户一个终端(Session)。在这个终端运行的所有程序，包括前台进程组和 后台进程组，一般都属于这个 Session。当用户退出Linux登录时，前台进程组和后台有对终端输出的进程将会收到SIGHUP信号。这个信号的默认操作为终止进程，因此前台进 程组和后台有终端输出的进程就会中止。不过可以捕获这个信号，比如wget能捕获SIGHUP信号，并忽略它，这样就算退出了Linux登录，wget也 能继续下载。
+此外，对于与终端脱离关系的守护进程，这个信号用于通知它重新读取配置文件。
+
 ## Broker崩溃以后有什么影响？
 
 1）Master节点崩溃
