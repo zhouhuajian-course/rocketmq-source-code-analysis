@@ -8,12 +8,11 @@
 
 原理：同步发送是指消息发送方发出数据后，会在收到接收方发回响应之后才发下一个数据包的通讯方式。  
 应用场景：此种方式应用场景非常广泛，例如重要通知邮件、报名短信通知、营销短信系统等。
+
 ```text
         // 发送消息，只要不抛异常就是成功
         SendResult sendResult = producer.send(msg);
 ```
-
-![message-send-sync.png](readme/message-send-sync.png)
 
 **async 异步发送**
 
@@ -35,8 +34,6 @@
         });
 ```
 
-![message-send-async.png](readme/message-send-async.png)
-
 **one-way 单向发送**
 
 采用one-way发送模式发送消息的时候，发送端发送完消息后会立即返回，不会等待来自broker的ack来告知本次消息发送是否完全完成发送。这种方式吞吐量很大，但是存在消息丢失的风险，所以其适用于不重要的消息发送，比如日志收集。
@@ -52,11 +49,9 @@
         producer.sendOneway(msg);
 ```
 
-![message-send-one-way.png](readme/message-send-one-way.png)
-
 one-way adjective  /ˌwʌnˈweɪ/ travelling or allowing travel in only one direction 单程的；单向的，单行的
 
-_来自网络_
+![message-send-sync-async-oneway.png](readme/message-send-sync-async-oneway.png)
 
 ## NameServer 路由注册、路由剔除
 
