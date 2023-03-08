@@ -13,7 +13,7 @@
         SendResult sendResult = producer.send(msg);
 ```
 
-![message-send-sync.png](message-send-sync.png)
+![message-send-sync.png](readme/message-send-sync.png)
 
 **async 异步发送**
 
@@ -35,7 +35,7 @@
         });
 ```
 
-![message-send-async.png](message-send-async.png)
+![message-send-async.png](readme/message-send-async.png)
 
 **one-way 单向发送**
 
@@ -52,7 +52,7 @@
         producer.sendOneway(msg);
 ```
 
-![message-send-one-way.png](message-send-one-way.png)
+![message-send-one-way.png](readme/message-send-one-way.png)
 
 one-way adjective  /ˌwʌnˈweɪ/ travelling or allowing travel in only one direction 单程的；单向的，单行的
 
