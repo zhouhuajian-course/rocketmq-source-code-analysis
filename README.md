@@ -1,5 +1,71 @@
 # RocketMQ 源码分析
 
+## 信息发送 sync、async、one-way
+
+**sync 同步发送**
+
+发送消息采用同步模式，这种方式只有在消息完全发送完成之后才返回结果，此方式存在需要同步等待发送结果的时间代价。
+
+原理：同步发送是指消息发送方发出数据后，会在收到接收方发回响应之后才发下一个数据包的通讯方式。  
+应用场景：此种方式应用场景非常广泛，例如重要通知邮件、报名短信通知、营销短信系统等。
+```text
+        // 发送消息，只要不抛异常就是成功
+        SendResult sendResult = producer.send(msg);
+```
+
+![message-send-sync.png](message-send-sync.png)
+
+**async 异步发送**
+
+发送消息采用异步发送模式，消息发送后立刻返回，当消息完全完成发送后，会调用回调函数sendCallback来告知发送者本次发送是成功或者失败。异步模式通常用于响应时间敏感业务场景，即承受不了同步发送消息时等待返回的耗时代价。
+
+原理：异步发送是指发送方发出数据后，不等接收方发回响应，接着发送下个数据包的通讯方式。MQ 的异步发送，需要用户实现异步发送回调接口（SendCallback），在执行消息的异步发送时，应用不需要等待服务器响应即可直接返回，通过回调接口接收务器响应，并对服务器的响应结果进行处理。  
+应用场景：异步发送一般用于链路耗时较长，对 RT 响应时间较为敏感的业务场景，例如用户视频上传后通知启动转码服务，转码完成后通知推送转码结果等。
+
+```text
+        producer.sendAsync(msg, new SendCallback() {
+            public void onSuccess(final SendResult sendResult) {
+                // 消费发送成功
+                System.out.println("");
+            }
+            public void onException(OnExceptionContext context) {
+                // 消息发送失败
+                System.out.println("");
+            }
+        });
+```
+
+![message-send-async.png](message-send-async.png)
+
+**one-way 单向发送**
+
+采用one-way发送模式发送消息的时候，发送端发送完消息后会立即返回，不会等待来自broker的ack来告知本次消息发送是否完全完成发送。这种方式吞吐量很大，但是存在消息丢失的风险，所以其适用于不重要的消息发送，比如日志收集。
+
+适用于某些耗时非常短，但对可靠性要求并不高的场景，例如日志收集。  
+只发送消息，不等待服务器响应，只发送请求不等待应答。此方式发送消息的过程耗时非常短，一般在微秒级别。
+
+原理：单向（Oneway）发送特点为只负责发送消息，不等待服务器回应且没有回调函数触发，即只发送请求不等待应答。此方式发送消息的过程耗时非常短，一般在微秒级别。  
+应用场景：适用于某些耗时非常短，但对可靠性要求并不高的场景，例如日志收集。
+
+```text
+        // oneway发送消息，只要不抛异常就是成功
+        producer.sendOneway(msg);
+```
+
+![message-send-one-way.png](message-send-one-way.png)
+
+one-way adjective  /ˌwʌnˈweɪ/ travelling or allowing travel in only one direction 单程的；单向的，单行的
+
+_来自网络_
+
+## NameServer 路由注册、路由剔除
+
+Broker启动时会，把Broker所有信息，发请求给 NameServer，进行注册，然后每30秒再注册一次
+
+NameServer有定时任务，scanNotActiveBroker，发现120秒都没Broker的心跳包，则剔除该Broker的路由信息。
+
+如果Broker正常关闭，NameServer能快速感知，不需要120秒以后。
+
 ## VM选项
 
 三种：
