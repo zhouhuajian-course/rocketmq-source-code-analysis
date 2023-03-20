@@ -1,5 +1,57 @@
 # RocketMQ 源码分析
 
+## Dashboard
+
+spring-boot 项目
+
+Spring Boot 项目在启动后，首先会去静态资源路径（resources/static）下查找 index.html 作为首页文件。
+
+Home Page
+Static resources, including HTML and JavaScript and CSS, can be served from your Spring Boot application by dropping them into the right place in the source code. By default, Spring Boot serves static content from resources in the classpath at /static (or /public). The index.html resource is special because, if it exists, it is used as a "`welcome page
+
+http://localhost:8080/cluster/list.query cluster page
+
+```java
+@Controller
+@RequestMapping("/cluster")
+@Permission
+public class ClusterController {
+
+    @Resource
+    private ClusterService clusterService;
+
+    @RequestMapping(value = "/list.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object list() {
+        return clusterService.list();
+    }
+
+    @RequestMapping(value = "/brokerConfig.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object brokerConfig(@RequestParam String brokerAddr) {
+        return clusterService.getBrokerConfig(brokerAddr);
+    }
+}
+```
+
+## 路由相关源码位置
+
+1. Broker 启动时以及每隔30秒向NameServer提供路由信息 源码位置
+
+   org.apache.rocketmq.broker.BrokerController#start
+
+2. Consumer 启动时以及每隔30秒向NameServer拉取路由信息 源码位置
+
+   org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl#updateTopicSubscribeInfoWhenSubscriptionChanged
+
+   org.apache.rocketmq.client.impl.factory.MQClientInstance#startScheduledTask
+
+3. Producer 发送消息没路由时以及每隔30秒向NameServer拉取路由信息 源码位置
+
+   org.apache.rocketmq.client.impl.producer.DefaultMQProducerImpl#tryToFindTopicPublishInfo
+
+   org.apache.rocketmq.client.impl.factory.MQClientInstance#startScheduledTask
+
 ## 信息发送 sync、async、one-way
 
 **sync 同步发送**
