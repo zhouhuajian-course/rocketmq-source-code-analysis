@@ -1,6 +1,16 @@
 # RocketMQ 源码分析
 
+## 消费者监听器 msgs 为 list的原因
+
+可以设置批量消费 默认1
+
+`consumer.setConsumeMessageBatchMaxSize(10);`
+
+![consumer-message-batch.png](readme/consumer-message-batch.png)
+
 ## Dashboard
+
+主要是调用 tools模块的方法，可以说是 图形化版的 mqadmin
 
 spring-boot 项目
 
@@ -32,6 +42,33 @@ public class ClusterController {
         return clusterService.getBrokerConfig(brokerAddr);
     }
 }
+
+--------------
+    
+org.apache.rocketmq.tools.admin.DefaultMQAdminExtImpl.examineBrokerClusterInfo
+
+--------------
+
+    public static final int GET_BROKER_CLUSTER_INFO = 106;
+
+--------------
+
+    private RemotingCommand getBrokerClusterInfo(ChannelHandlerContext ctx, RemotingCommand request) {
+        final RemotingCommand response = RemotingCommand.createResponseCommand(null);
+
+        byte[] content = this.namesrvController.getRouteInfoManager().getAllClusterInfo().encode();
+        response.setBody(content);
+
+        response.setCode(ResponseCode.SUCCESS);
+        response.setRemark(null);
+        return response;
+    }
+    
+------------
+
+private final Map<String/* brokerName */, BrokerData> brokerAddrTable;
+private final Map<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+    
 ```
 
 ## 路由相关源码位置

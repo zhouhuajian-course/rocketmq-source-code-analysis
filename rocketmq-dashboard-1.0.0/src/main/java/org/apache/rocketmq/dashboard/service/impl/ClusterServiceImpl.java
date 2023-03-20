@@ -42,7 +42,9 @@ public class ClusterServiceImpl implements ClusterService {
     @Override
     public Map<String, Object> list() {
         try {
+            // HashMqp
             Map<String, Object> resultMap = Maps.newHashMap();
+            // 集群信息
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
             logger.info("op=look_clusterInfo {}", JsonUtil.obj2String(clusterInfo));
             Map<String/*brokerName*/, Map<Long/* brokerId */, Object/* brokerDetail */>> brokerServer = Maps.newHashMap();
@@ -54,6 +56,7 @@ public class ClusterServiceImpl implements ClusterService {
                 }
                 brokerServer.put(brokerData.getBrokerName(), brokerMasterSlaveMap);
             }
+            // 集群信息 broker服务器
             resultMap.put("clusterInfo", clusterInfo);
             resultMap.put("brokerServer", brokerServer);
             return resultMap;

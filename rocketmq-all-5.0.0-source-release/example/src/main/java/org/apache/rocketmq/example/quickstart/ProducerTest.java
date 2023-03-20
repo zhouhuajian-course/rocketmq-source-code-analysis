@@ -9,7 +9,7 @@ import java.util.Date;
 import java.util.TimeZone;
 
 
-public class SingleMessageProducer {
+public class ProducerTest {
     public static void main(String[] args) throws Exception {
         DefaultMQProducer producer = new DefaultMQProducer("FarmerProducerGroup");
         producer.setNamesrvAddr("localhost:9876");
