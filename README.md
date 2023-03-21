@@ -1,5 +1,65 @@
 # RocketMQ 源码分析
 
+## Broker 多主模式 配置分析
+
+```text
+# Broker集群名=默认集群
+brokerClusterName=DefaultCluster
+# Broker名
+brokerName=broker-a (broker-b broker-c etc.)
+# BrokerId 0表示主 大于0 表示 从
+brokerId=0
+# 什么时候删除过期文件=凌晨四点 活跃用户量较小，机器压力较小
+deleteWhen=04
+# 文件保留时间 48天
+fileReservedTime=48
+# Broker角色 异步 Master 这里同步异步没关系，因为没有Slave
+brokerRole=ASYNC_MASTER
+# 刷盘类型 异步刷盘 (同步刷盘 能保证消息可靠性更好，性能会差一些)
+flushDiskType=ASYNC_FLUSH
+```
+
+## Broker 轨迹
+
+消息轨迹 消息追踪
+
+消息轨迹就是记录消息从发送到存储到消费都是谁发的存哪了谁消费的以及时间点，这一套轨迹的日志。
+
+所以就两个核心
+
+消息轨迹日志的格式（记录什么）
+消息轨迹日志的存储（存在哪）
+
+肯定是存在broker中。不可能引入其他存储中间件的。
+所以最佳方案是：把消息轨迹也当一条消息存在broker队列中。
+
+既然是消息，那topic如何确定呢？？
+
+系统默认的topic。默认是：RMQ_SYS_TRACE_TOPIC，队列个数是1.
+
+自定义topic。不推荐使用。
+
+为了避免消息轨迹的消息 和 正常消息 混在一起。官方建议，在broker集群中，新增加一台机器，只在这台机器上开启消息轨迹追踪，所有消息轨迹的消息就会只存在这台机器上。
+
+两点好处：
+
+数据隔离
+不会增加原先业务broker的负载压力
+
+新定义一个特殊的broke节点去存储消息轨迹跟踪数据
+在一个集群中我们能定义一个特殊的broker服务节点去存储消息轨迹跟踪的数据。我们在broker.properties文件中，能够加一个flag(比如autoTraceBrokerEnable)去定义这个broker是否是一个用来存储消息轨迹跟踪数据的特殊节点。
+
+autoTraceBrokerEnable is false。表明这个broker 是一个普通的节点，然后"Trace_Topic”将不去建立在这个节点上。并且正常的消息还会正常处理。
+autoTraceBrokerEnable is true。表明broker是一个特殊的节点，它是特别用来存储消息轨迹跟踪数据的。并且"Trace_Topic"在broker开始阶段自动创建，这个节点自动在nameserver注册 它拥有的topic集合（包括Trace_Topic）。这样，在一个RocketMQ 集群中，仅仅有一个特殊的broker节点去存储消息轨迹跟踪数据。并且客户端（包括发布和订阅消息）会通过nameserver知道那个broker节点是负责收集消息轨迹跟踪数据的，并发送。
+
+## Broker
+
+一个 Broker 所有的消息 都会 落盘到 一个大的 CommitLog，这个大的CommitLog具体会切分成多个小的CommmitLog
+
+如果是非当前活跃文件并超过一定时间，文件会被清除
+
+如果磁盘容量不足，也会清除文件
+
 ## 消费者监听器 msgs 为 list的原因
 
 可以设置批量消费 默认1
