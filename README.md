@@ -1,12 +1,112 @@
 # RocketMQ 源码分析
 
+## Broker 文件恢复 单元测试
+
+CommitLog是消息存储文件，ConsumeQueue和Index需要根据CommitLog进行构建
+
+ConsumeQueue是逻辑消费队列 logical
+
+```text
+org.apache.rocketmq.store.DefaultMessageStoreTest.damageCommitLog
+```
+
+单元测试 特地 破坏 文件 模拟 Broker 异常退出
+
+```text
+boolean lastExitOK = !this.isTempFileExist();
+LOGGER.info("last shutdown {}, root dir: {}", lastExitOK ? "normally" : "abnormally", messageStoreConfig.getStorePathRootDir());
+```
+
+Store模块 根据上一次退出是否正常，会走不同的程序，如果退出异常，那么走文件修复程序。
+
+
+## 客户端 随机选取一个NameServer进行通信，选中的NameServer宕机后，轮询选择下一个
+
+随机选中一个NameServer后会一直和它通信，除非它宕机。（已调试证实）
+
+如果所有NameServer都宕机，那么生产者、消费者依然能正常运作。只是客户端还会轮询去尝试和一个正常的NameServer进行通信。（已调试证实）
+
+可通过不发送任何消息、注释定时任务、一直发送消息等方式证实
+
+```text
+    private Channel getAndCreateNameserverChannel() throws InterruptedException {
+        String addr = this.namesrvAddrChoosed.get();
+        if (addr != null) {
+            ChannelWrapper cw = this.channelTables.get(addr);
+            if (cw != null && cw.isOK()) {
+                return cw.getChannel();
+            }
+        }
+
+        final List<String> addrList = this.namesrvAddrList.get();
+        if (this.namesrvChannelLock.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+            try {
+                addr = this.namesrvAddrChoosed.get();
+                if (addr != null) {
+                    ChannelWrapper cw = this.channelTables.get(addr);
+                    if (cw != null && cw.isOK()) {
+                        return cw.getChannel();
+                    }
+                }
+
+                if (addrList != null && !addrList.isEmpty()) {
+                    for (int i = 0; i < addrList.size(); i++) {
+                        // 如果发消息
+                        //     线程 main: 消息发送时 会执行一次这个地方 获取一个随机索引，然后加1 只会来一次
+                        // 如果不发任何消息
+                        //     线程 MQClientFactoryScheduledThread: 如果不发任何消息，定时任务 也会来这里  只会来一次
+                        // 如果之前被选中的NameServer宕机，如果没发任何消息，那么当执行下次定时任务时，也就是30秒内会，索引+1，然后轮询选择下一个
+                        //     线程 MQClientFactoryScheduledThread
+                        int index = this.namesrvIndex.incrementAndGet();
+                        index = Math.abs(index);
+                        index = index % addrList.size();
+                        String newAddr = addrList.get(index);
+
+                        this.namesrvAddrChoosed.set(newAddr);
+                        LOGGER.info("new name server is chosen. OLD: {} , NEW: {}. namesrvIndex = {}", addr, newAddr, namesrvIndex);
+                        Channel channelNew = this.createChannel(newAddr);
+                        if (channelNew != null) {
+                            return channelNew;
+                        }
+                    }
+                    throw new RemotingConnectException(addrList.toString());
+                }
+            } catch (Exception e) {
+                LOGGER.error("getAndCreateNameserverChannel: create name server channel exception", e);
+            } finally {
+                this.namesrvChannelLock.unlock();
+            }
+        } else {
+            LOGGER.warn("getAndCreateNameserverChannel: try to lock name server, but timeout, {}ms", LOCK_TIMEOUT_MILLIS);
+        }
+
+        return null;
+    }
+```
+
+## Broker Role
+
+```java
+package org.apache.rocketmq.store.config;
+
+// store 存储 配置 Broker角色 枚举
+public enum BrokerRole {
+    // 异步 主
+    ASYNC_MASTER,
+    // 同步 主
+    SYNC_MASTER,
+    // 从
+    SLAVE;
+}
+```
+
 ## Broker 多主模式 配置分析
 
 ```text
-# Broker集群名=默认集群
+# Broker集群名字=默认集群
 brokerClusterName=DefaultCluster
-# Broker名
-brokerName=broker-a (broker-b broker-c etc.)
+# Broker名字
+brokerName=broker-a (broker-b, broker-c, etc.)
 # BrokerId 0表示主 大于0 表示 从
 brokerId=0
 # 什么时候删除过期文件=凌晨四点 活跃用户量较小，机器压力较小
