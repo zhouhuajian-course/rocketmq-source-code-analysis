@@ -1,5 +1,74 @@
 # RocketMQ 源码分析
 
+## CommitLog ConsumeQueue IndexFile
+
+Broker有一个服务，专门doDispatch，根据CommitLog解析出ConsumeQueue和IndexFile
+
+## Broker 主从同步
+
+如果从节点向NameServer注册Broker，NameServer会返回主节点地址和高可用地址
+
+```java
+org.apache.rocketmq.namesrv.routeinfo.RouteInfoManager#registerBroker
+if (MixAll.MASTER_ID != brokerId) {
+    String masterAddr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
+    if (masterAddr != null) {
+        BrokerAddrInfo masterAddrInfo = new BrokerAddrInfo(clusterName, masterAddr);
+        BrokerLiveInfo masterLiveInfo = this.brokerLiveTable.get(masterAddrInfo);
+        if (masterLiveInfo != null) {
+            result.setHaServerAddr(masterLiveInfo.getHaServerAddr());
+            result.setMasterAddr(masterAddr);
+        }
+    }
+}
+```
+
+元数据 每3秒 从节点向主节点拉取一次 使用Netty实现 (Netty底层是java nio)
+
+```java
+this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+    @Override
+    public void run() {
+        try {
+            // last sync time > 60
+            if (System.currentTimeMillis() - lastSyncTimeMs > 60 * 1000) {
+                // sync all
+                BrokerController.this.getSlaveSynchronize().syncAll();
+                lastSyncTimeMs = System.currentTimeMillis();
+            }
+            //timer checkpoint, latency-sensitive, so sync it more frequently
+            // sync it more frequently
+            BrokerController.this.getSlaveSynchronize().syncTimerCheckPoint();
+        } catch (Throwable e) {
+            LOG.error("Failed to sync all config for slave.", e);
+        }
+    }
+}, 1000 * 10, 3 * 1000, TimeUnit.MILLISECONDS);
+
+public void syncAll() {
+    this.syncTopicConfig();  // 同步主题配置
+    this.syncConsumerOffset(); // 同步消费偏移
+    this.syncDelayOffset();  // 同步Delay偏移
+    this.syncSubscriptionGroupConfig();  // 同步订阅组配置
+    this.syncMessageRequestMode();  // 同步消息请求模式
+
+    if (brokerController.getMessageStoreConfig().isTimerWheelEnable()) {
+        this.syncTimerMetrics();
+    }
+}
+```
+
+消息数据 使用 java nio 实现
+
+从节点启动时，如果配置没有指定Broker Ha地址，在向NameServer注册时，NameServer会返回主节点地址，  
+然后使用nio连接主节点。  
+主从间维持一条TCP长连接
+
+1. 生产者发消息，主发数据给从，从马上上报最大偏移；
+2. 生产者没发消息时，从每秒上报最大偏移，
+   如果主从数据不一致，主发相差的数据给从。
+
+
 ## Broker 文件恢复 单元测试
 
 CommitLog是消息存储文件，ConsumeQueue和Index需要根据CommitLog进行构建

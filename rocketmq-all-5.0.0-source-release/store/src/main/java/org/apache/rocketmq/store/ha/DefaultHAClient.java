@@ -39,8 +39,8 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
     private final AtomicReference<String> masterHaAddress = new AtomicReference<>();
     private final AtomicReference<String> masterAddress = new AtomicReference<>();
     private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
-    private SocketChannel socketChannel;
-    private Selector selector;
+    private SocketChannel socketChannel;  //  Socket Channel
+    private Selector selector;  // 选择器
     /**
      * last time that slave reads date from master.
      */
@@ -59,6 +59,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
     private FlowMonitor flowMonitor;
 
     public DefaultHAClient(DefaultMessageStore defaultMessageStore) throws IOException {
+        // selector
         this.selector = RemotingUtil.openSelector();
         this.defaultMessageStore = defaultMessageStore;
         this.flowMonitor = new FlowMonitor(defaultMessageStore.getMessageStoreConfig());
@@ -100,6 +101,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
 
         for (int i = 0; i < 3 && this.reportOffset.hasRemaining(); i++) {
             try {
+                // 向主节点报告最大偏移量
                 this.socketChannel.write(this.reportOffset);
             } catch (IOException e) {
                 log.error(this.getServiceName()
@@ -134,11 +136,15 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
         this.byteBufferBackup = tmp;
     }
 
+    // 处理读事件
     private boolean processReadEvent() {
         int readSizeZeroTimes = 0;
+        // buffer还有剩余
         while (this.byteBufferRead.hasRemaining()) {
             try {
+                // 读取数据
                 int readSize = this.socketChannel.read(this.byteBufferRead);
+                // 读到数据
                 if (readSize > 0) {
                     flowMonitor.addByteCountTransferred(readSize);
                     readSizeZeroTimes = 0;
@@ -188,7 +194,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
                 if (diff >= (msgHeaderSize + bodySize)) {
                     byte[] bodyData = byteBufferRead.array();
                     int dataStart = this.dispatchPosition + msgHeaderSize;
-
+                    // 追加到CommitLog
                     this.defaultMessageStore.appendToCommitLog(
                         masterPhyOffset, bodyData, dataStart, bodySize);
 
@@ -336,9 +342,9 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
                 return false;
             }
         }
-
+        // select
         this.selector.select(1000);
-
+        // 如果有读事件发生，处理读时间
         result = this.processReadEvent();
         if (!result) {
             return false;
