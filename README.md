@@ -1,8 +1,568 @@
 # RocketMQ 源码分析
 
+## messageRequestQueue
+
+1. MessageRequest messageRequest = this.messageRequestQueue.take(); 没有数据
+2. RebalanceService 会一直循环 this.mqClientFactory.doRebalance();
+   会一直this.dispatchPullRequest(pullRequestList, 500);
+   this.defaultMQPushConsumerImpl.executePullRequestLater(pullRequest, delay);
+   PullMessageService.this.executePullRequestImmediately(pullRequest);
+   也就是RebalanceService会一直往this.messageRequestQueue.put数据
+3. MessageRequest messageRequest = this.messageRequestQueue.take() 拿到数据，发起pull请求，请求成功，异步回调
+
+[messageRequestQueue](readme/messageRequestQueue.png)
+
+## 消费者拉取消息
+
+```
+        // 注册消息监听器
+		consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
+            for (MessageExt msg : msgs) {
+                System.out.println("=========================" + "\n" +
+                                   "MsgID = " + msg.getMsgId() + "\n" +
+                                   "BrokerName = " + msg.getBrokerName() + "\n" +
+                                   "Topic = " + msg.getTopic() + "\n" +
+                                   "QueueId = " + msg.getQueueId() + "\n" +
+                                   "MessageBody = " + new String(msg.getBody()) + "\n" +
+                                   "ThreadName = " + Thread.currentThread().getName());
+            }
+            // 返回 消息消费结果
+            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+        });
+        
+----------------- 消费者启动 -------------------------        
+        
+    public synchronized void start() throws MQClientException {
+        switch (this.serviceState) {
+            case CREATE_JUST:
+                log.info("the consumer [{}] start beginning. messageModel={}, isUnitMode={}", this.defaultMQPushConsumer.getConsumerGroup(),
+                    this.defaultMQPushConsumer.getMessageModel(), this.defaultMQPushConsumer.isUnitMode());
+                this.serviceState = ServiceState.START_FAILED;
+
+                this.checkConfig();
+
+                this.copySubscription();
+                // 消息模式 CLUSTERING 默认是这个 
+                if (this.defaultMQPushConsumer.getMessageModel() == MessageModel.CLUSTERING) {
+                    this.defaultMQPushConsumer.changeInstanceNameToPID();
+                }
+
+                this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
+
+                this.rebalanceImpl.setConsumerGroup(this.defaultMQPushConsumer.getConsumerGroup());
+                this.rebalanceImpl.setMessageModel(this.defaultMQPushConsumer.getMessageModel());
+                this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultMQPushConsumer.getAllocateMessageQueueStrategy());
+                this.rebalanceImpl.setmQClientFactory(this.mQClientFactory);
+
+                if (this.pullAPIWrapper == null) {
+                    // 拉取接口封装器
+                    this.pullAPIWrapper = new PullAPIWrapper(
+                        mQClientFactory,
+                        this.defaultMQPushConsumer.getConsumerGroup(), isUnitMode());
+                }
+                this.pullAPIWrapper.registerFilterMessageHook(filterMessageHookList);
+
+                if (this.defaultMQPushConsumer.getOffsetStore() != null) {
+                    this.offsetStore = this.defaultMQPushConsumer.getOffsetStore();
+                } else {
+                    switch (this.defaultMQPushConsumer.getMessageModel()) {
+                        // BROADCASTING 模式 本地文件偏移存储
+                        case BROADCASTING:
+                            this.offsetStore = new LocalFileOffsetStore(this.mQClientFactory, this.defaultMQPushConsumer.getConsumerGroup());
+                            break;
+                        // CLUSTERING 模式 远程Broker偏移存储
+                        case CLUSTERING:
+                            this.offsetStore = new RemoteBrokerOffsetStore(this.mQClientFactory, this.defaultMQPushConsumer.getConsumerGroup());
+                            break;
+                        default:
+                            break;
+                    }
+                    this.defaultMQPushConsumer.setOffsetStore(this.offsetStore);
+                }
+                // 偏移存储 加载
+                this.offsetStore.load();
+                // 有序的消息监听器
+                if (this.getMessageListenerInner() instanceof MessageListenerOrderly) {
+                    this.consumeOrderly = true;
+                    this.consumeMessageService =
+                        new ConsumeMessageOrderlyService(this, (MessageListenerOrderly) this.getMessageListenerInner());
+                    //POPTODO reuse Executor ?
+                    this.consumeMessagePopService = new ConsumeMessagePopOrderlyService(this, (MessageListenerOrderly) this.getMessageListenerInner());
+                }
+                // 并发的消息监听器 使用的是这个
+                else if (this.getMessageListenerInner() instanceof MessageListenerConcurrently) {
+                    this.consumeOrderly = false;
+                    // 创建消费消息服务，执行异步任务的线程池
+                    this.consumeMessageService =
+                        new ConsumeMessageConcurrentlyService(this, (MessageListenerConcurrently) this.getMessageListenerInner());
+                    //POPTODO reuse Executor ?
+                    this.consumeMessagePopService =
+                        new ConsumeMessagePopConcurrentlyService(this, (MessageListenerConcurrently) this.getMessageListenerInner());
+                }
+                // 启动消费消息服务
+                this.consumeMessageService.start();
+                // POPTODO
+                this.consumeMessagePopService.start();
+                // 注册消费者
+                boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPushConsumer.getConsumerGroup(), this);
+                if (!registerOK) {
+                    this.serviceState = ServiceState.CREATE_JUST;
+                    this.consumeMessageService.shutdown(defaultMQPushConsumer.getAwaitTerminationMillisWhenShutdown());
+                    throw new MQClientException("The consumer group[" + this.defaultMQPushConsumer.getConsumerGroup()
+                        + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
+                        null);
+                }
+
+                mQClientFactory.start();
+                log.info("the consumer [{}] start OK.", this.defaultMQPushConsumer.getConsumerGroup());
+                this.serviceState = ServiceState.RUNNING;
+                break;
+            case RUNNING:
+            case START_FAILED:
+            case SHUTDOWN_ALREADY:
+                throw new MQClientException("The PushConsumer service state not OK, maybe started once, "
+                    + this.serviceState
+                    + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
+                    null);
+            default:
+                break;
+        }
+
+        this.updateTopicSubscribeInfoWhenSubscriptionChanged();
+        this.mQClientFactory.checkClientInBroker();
+        this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
+        this.mQClientFactory.rebalanceImmediately();
+    }
+    
+     public ConsumeMessageConcurrentlyService(DefaultMQPushConsumerImpl defaultMQPushConsumerImpl,
+        MessageListenerConcurrently messageListener) {
+        this.defaultMQPushConsumerImpl = defaultMQPushConsumerImpl;        // 消息监听器
+        // 消息监听器
+        this.messageListener = messageListener;
+
+        this.defaultMQPushConsumer = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer();
+        this.consumerGroup = this.defaultMQPushConsumer.getConsumerGroup();
+        // 消费请求队列
+        this.consumeRequestQueue = new LinkedBlockingQueue<>();
+        // 消费线程前缀
+        String consumeThreadPrefix = null;
+        // 消费者组 长度 大于 100
+        if (consumerGroup.length() > 100) {
+            // ConsumeMessageThread_截取前100个字符_
+            consumeThreadPrefix = new StringBuilder("ConsumeMessageThread_").append(consumerGroup, 0, 100).append("_").toString();
+        } else {
+            // ConsumeMessageThread_消费者组_
+            consumeThreadPrefix = new StringBuilder("ConsumeMessageThread_").append(consumerGroup).append("_").toString();
+        }
+        // 线程池执行器 异步任务多线程执行器
+        this.consumeExecutor = new ThreadPoolExecutor(
+            // 线程池核心大小
+            this.defaultMQPushConsumer.getConsumeThreadMin(),
+            // 线程池最大大小
+            this.defaultMQPushConsumer.getConsumeThreadMax(),
+            // KeepAlive 时间 60秒
+            1000 * 60,
+            // 时间单位 毫秒
+            TimeUnit.MILLISECONDS,
+            // 消费请求队列 worker queue 工作队列
+            this.consumeRequestQueue,
+            // 线程工厂
+            new ThreadFactoryImpl(consumeThreadPrefix));
+        // 可调度的执行器服务 异步任务执行器
+        // 单线程执行器
+        this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("ConsumeMessageScheduledThread_"));
+        this.cleanExpireMsgExecutors = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("CleanExpireMsgScheduledThread_"));
+    }
+    
+        // 新线程
+    @Override
+    public Thread newThread(Runnable r) {
+        // 线程 线程名
+        Thread thread = new Thread(r, threadNamePrefix + this.threadIndex.incrementAndGet());
+        thread.setDaemon(daemon);
+
+        // Log all uncaught exception
+        thread.setUncaughtExceptionHandler((t, e) ->
+            LOGGER.error("[BUG] Thread has an uncaught exception, threadId={}, threadName={}",
+                t.getId(), t.getName(), e));
+
+        return thread;
+```
+
+```
+
+----------------- 客户端启动 -------------------------
+
+public void start() throws MQClientException {
+
+        synchronized (this) {
+            switch (this.serviceState) {
+                case CREATE_JUST:
+                    this.serviceState = ServiceState.START_FAILED;
+                    // If not specified,looking address from name server
+                    // 获取NameServer地址
+                    if (null == this.clientConfig.getNamesrvAddr()) {
+                        this.mQClientAPIImpl.fetchNameServerAddr();
+                    }
+                    // Start request-response channel
+                    this.mQClientAPIImpl.start();
+                    // Start various schedule tasks
+                    // 启动定时任务
+                    this.startScheduledTask();
+                    // Start pull service
+                    // 拉取消息服务 启动
+                    this.pullMessageService.start();  ------------------ 比较重要的代码 -----------------
+                    // Start rebalance service
+                    this.rebalanceService.start();
+                    // Start push service
+                    this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
+                    log.info("the client factory [{}] start OK", this.clientId);
+                    this.serviceState = ServiceState.RUNNING;
+                    break;
+                case START_FAILED:
+                    throw new MQClientException("The Factory object[" + this.getClientId() + "] has been created before, and failed.", null);
+                default:
+                    break;
+            }
+        }
+    }
+    
+    public MQClientInstance(ClientConfig clientConfig, int instanceIndex, String clientId, RPCHook rpcHook) {
+        
+        // 拉取消息服务
+        this.pullMessageService = new PullMessageService(this);
+        
+org.apache.rocketmq.client.impl.consumer.PullMessageService.run
+
+	@Override
+    public void run() {
+        logger.info(this.getServiceName() + " service started");
+        // 当未停止时，死循环
+        while (!this.isStopped()) {
+            try {
+                // RMQ提前将要发送的请求写到队列
+                // 拿到一个messageRequest消息请求
+                // 异步任务的实现方式之一，将数据放到队列
+                MessageRequest messageRequest = this.messageRequestQueue.take();
+                if (messageRequest.getMessageRequestMode() == MessageRequestMode.POP) {
+                    this.popMessage((PopRequest)messageRequest);
+                } else {
+                    // 拉取消息
+                    this.pullMessage((PullRequest)messageRequest);
+                }
+            } catch (InterruptedException ignored) {
+            } catch (Exception e) {
+                logger.error("Pull Message Service Run Method exception", e);
+            }
+        }
+
+        logger.info(this.getServiceName() + " service end");
+    }
+
+
+ 	public void executePullRequestImmediately(final PullRequest pullRequest) {
+        try {
+            this.messageRequestQueue.put(pullRequest);
+        } catch (InterruptedException e) {
+            logger.error("executePullRequestImmediately pullRequestQueue.put", e);
+        }
+    }
+    
+ org.apache.rocketmq.client.impl.consumer.DefaultMQPushConsumerImpl.pullMessage
+    
+     // 创建pull回调对象
+        PullCallback pullCallback = new PullCallback() {
+            // 成功时
+            @Override
+            public void onSuccess(PullResult pullResult) {
+                if (pullResult != null) {
+                    // 处理pull结果
+                    pullResult = DefaultMQPushConsumerImpl.this.pullAPIWrapper.processPullResult(pullRequest.getMessageQueue(), pullResult,
+                        subscriptionData);
+
+                    switch (pullResult.getPullStatus()) {
+                        // 找到了数据
+                        case FOUND:
+                            long prevRequestOffset = pullRequest.getNextOffset();
+                            pullRequest.setNextOffset(pullResult.getNextBeginOffset());
+                            long pullRT = System.currentTimeMillis() - beginTimestamp;
+                            DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullRT(pullRequest.getConsumerGroup(),
+                                pullRequest.getMessageQueue().getTopic(), pullRT);
+
+                            long firstMsgOffset = Long.MAX_VALUE;
+                            if (pullResult.getMsgFoundList() == null || pullResult.getMsgFoundList().isEmpty()) {
+                                DefaultMQPushConsumerImpl.this.executePullRequestImmediately(pullRequest);
+                            } else {
+                                firstMsgOffset = pullResult.getMsgFoundList().get(0).getQueueOffset();
+
+                                DefaultMQPushConsumerImpl.this.getConsumerStatsManager().incPullTPS(pullRequest.getConsumerGroup(),
+                                    pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
+
+                                boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
+                                // 提交消费请求
+                                DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
+                                    pullResult.getMsgFoundList(),
+                                    processQueue,
+                                    pullRequest.getMessageQueue(),
+                                    dispatchToConsume);
+
+	try {
+            // 拉取核心实现
+            this.pullAPIWrapper.pullKernelImpl(
+                // 消息队列
+                pullRequest.getMessageQueue(),
+                subExpression,
+                subscriptionData.getExpressionType(),
+                subscriptionData.getSubVersion(),
+                pullRequest.getNextOffset(),
+                this.defaultMQPushConsumer.getPullBatchSize(),
+                this.defaultMQPushConsumer.getPullBatchSizeInBytes(),
+                sysFlag,
+                commitOffsetValue,
+                BROKER_SUSPEND_MAX_TIME_MILLIS,
+                CONSUMER_TIMEOUT_MILLIS_WHEN_SUSPEND,
+                CommunicationMode.ASYNC,
+                // 拉取回调
+                pullCallback
+            );
+        } catch (Exception e) {
+            log.error("pullKernelImpl exception", e);
+            this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
+        }
+        
+org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.submitConsumeRequest
+
+public void submitConsumeRequest(
+        final List<MessageExt> msgs,
+        final ProcessQueue processQueue,
+        final MessageQueue messageQueue,
+        final boolean dispatchToConsume) {
+        final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
+        // 消息大小 小于等于 消费批量大小
+        if (msgs.size() <= consumeBatchSize) {
+            ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
+            try {
+                // 消费执行器 提交异步任务
+                this.consumeExecutor.submit(consumeRequest);
+            } catch (RejectedExecutionException e) {
+                this.submitConsumeRequestLater(consumeRequest);
+            }
+        } else {
+            for (int total = 0; total < msgs.size(); ) {
+                List<MessageExt> msgThis = new ArrayList<>(consumeBatchSize);
+                for (int i = 0; i < consumeBatchSize; i++, total++) {
+                    if (total < msgs.size()) {
+                        msgThis.add(msgs.get(total));
+                    } else {
+                        break;
+                    }
+                }
+
+                ConsumeRequest consumeRequest = new ConsumeRequest(msgThis, processQueue, messageQueue);
+                try {
+                    this.consumeExecutor.submit(consumeRequest);
+                } catch (RejectedExecutionException e) {
+                    for (; total < msgs.size(); total++) {
+                        msgThis.add(msgs.get(total));
+                    }
+
+                    this.submitConsumeRequestLater(consumeRequest);
+                }
+            }
+        }
+    }
+    
+org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.ConsumeRequest.run
+
+ public void run() {
+            if (this.processQueue.isDropped()) {
+                log.info("the message queue not be able to consume, because it's dropped. group={} {}", ConsumeMessageConcurrentlyService.this.consumerGroup, this.messageQueue);
+                return;
+            }
+            // 监听器
+            MessageListenerConcurrently listener = ConsumeMessageConcurrentlyService.this.messageListener;
+            ConsumeConcurrentlyContext context = new ConsumeConcurrentlyContext(messageQueue);
+            ConsumeConcurrentlyStatus status = null;
+            defaultMQPushConsumerImpl.tryResetPopRetryTopic(msgs, consumerGroup);
+            defaultMQPushConsumerImpl.resetRetryAndNamespace(msgs, defaultMQPushConsumer.getConsumerGroup());
+
+            ConsumeMessageContext consumeMessageContext = null;
+            if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
+                consumeMessageContext = new ConsumeMessageContext();
+                consumeMessageContext.setNamespace(defaultMQPushConsumer.getNamespace());
+                consumeMessageContext.setConsumerGroup(defaultMQPushConsumer.getConsumerGroup());
+                consumeMessageContext.setProps(new HashMap<>());
+                consumeMessageContext.setMq(messageQueue);
+                consumeMessageContext.setMsgList(msgs);
+                consumeMessageContext.setSuccess(false);
+                ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.executeHookBefore(consumeMessageContext);
+            }
+
+            long beginTimestamp = System.currentTimeMillis();
+            boolean hasException = false;
+            ConsumeReturnType returnType = ConsumeReturnType.SUCCESS;
+            try {
+                if (msgs != null && !msgs.isEmpty()) {
+                    for (MessageExt msg : msgs) {
+                        MessageAccessor.setConsumeStartTimeStamp(msg, String.valueOf(System.currentTimeMillis()));
+                    }
+                }
+                // 监听器，消费消息
+                status = listener.consumeMessage(Collections.unmodifiableList(msgs), context);
+```
+
+
+```text
+ public PullResult pullKernelImpl(
+        final MessageQueue mq,
+        final String subExpression,
+        final String expressionType,
+        final long subVersion,
+        final long offset,
+        final int maxNums,
+        final int maxSizeInBytes,
+        final int sysFlag,
+        final long commitOffset,
+        final long brokerSuspendMaxTimeMillis,
+        final long timeoutMillis,
+        final CommunicationMode communicationMode,
+        final PullCallback pullCallback
+    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        // 找 Broker 结果
+        FindBrokerResult findBrokerResult =
+            this.mQClientFactory.findBrokerAddressInSubscribe(this.mQClientFactory.getBrokerNameFromMessageQueue(mq),
+                this.recalculatePullFromWhichNode(mq), false);
+        if (null == findBrokerResult) {
+            this.mQClientFactory.updateTopicRouteInfoFromNameServer(mq.getTopic());
+            findBrokerResult =
+                this.mQClientFactory.findBrokerAddressInSubscribe(this.mQClientFactory.getBrokerNameFromMessageQueue(mq),
+                    this.recalculatePullFromWhichNode(mq), false);
+        }
+
+        // 找到了Broker
+        if (findBrokerResult != null) {
+            {
+                // check version
+                if (!ExpressionType.isTagType(expressionType)
+                    && findBrokerResult.getBrokerVersion() < MQVersion.Version.V4_1_0_SNAPSHOT.ordinal()) {
+                    throw new MQClientException("The broker[" + mq.getBrokerName() + ", "
+                        + findBrokerResult.getBrokerVersion() + "] does not upgrade to support for filter message by " + expressionType, null);
+                }
+            }
+            int sysFlagInner = sysFlag;
+            // slave节点
+            if (findBrokerResult.isSlave()) {
+                sysFlagInner = PullSysFlag.clearCommitOffsetFlag(sysFlagInner);
+            }
+            // 拉取消息请求头
+            PullMessageRequestHeader requestHeader = new PullMessageRequestHeader();
+            requestHeader.setConsumerGroup(this.consumerGroup);
+            requestHeader.setTopic(mq.getTopic());
+            requestHeader.setQueueId(mq.getQueueId());
+            requestHeader.setQueueOffset(offset);
+            requestHeader.setMaxMsgNums(maxNums);
+            requestHeader.setSysFlag(sysFlagInner);
+            requestHeader.setCommitOffset(commitOffset);
+            requestHeader.setSuspendTimeoutMillis(brokerSuspendMaxTimeMillis);
+            requestHeader.setSubscription(subExpression);
+            requestHeader.setSubVersion(subVersion);
+            requestHeader.setMaxMsgBytes(maxSizeInBytes);
+            requestHeader.setExpressionType(expressionType);
+            requestHeader.setBname(mq.getBrokerName());
+
+            String brokerAddr = findBrokerResult.getBrokerAddr();
+            // 拉取系统标记.是否有类过滤器标记(系统标记内部)
+            if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
+                // 计算拉取从那个过滤器服务器（mq.获取主题, broker地址）
+                brokerAddr = computePullFromWhichFilterServer(mq.getTopic(), brokerAddr);
+            }
+
+            System.out.println("向 " + brokerAddr + " 拉取消息" + " (" + Thread.currentThread().getName() + ") ");
+            // 拉取消息
+            PullResult pullResult = this.mQClientFactory.getMQClientAPIImpl().pullMessage(
+                brokerAddr,
+                requestHeader,
+                timeoutMillis,
+                communicationMode,
+                // 拉取回调
+                pullCallback);
+
+            return pullResult;
+        }
+        
+        
+        public PullResult pullMessage(
+        final String addr,
+        final PullMessageRequestHeader requestHeader,
+        final long timeoutMillis,
+        final CommunicationMode communicationMode,
+        final PullCallback pullCallback
+    ) throws RemotingException, MQBrokerException, InterruptedException {
+        RemotingCommand request;
+        if (PullSysFlag.hasLitePullFlag(requestHeader.getSysFlag())) {
+            request = RemotingCommand.createRequestCommand(RequestCode.LITE_PULL_MESSAGE, requestHeader);
+        } else {
+            // 创建请求命令
+            request = RemotingCommand.createRequestCommand(RequestCode.PULL_MESSAGE, requestHeader);
+        }
+
+        switch (communicationMode) {
+            case ONEWAY:
+                assert false;
+                return null;
+            case ASYNC:
+                // 异步拉取消息
+                this.pullMessageAsync(addr, request, timeoutMillis, pullCallback);
+                return null;
+            case SYNC:
+                return this.pullMessageSync(addr, request, timeoutMillis);
+            default:
+                assert false;
+                break;
+        }
+
+        return null;
+    }
+    
+    
+    private void pullMessageAsync(
+        final String addr,
+        final RemotingCommand request,
+        final long timeoutMillis,
+        final PullCallback pullCallback
+    ) throws RemotingException, InterruptedException {
+        // 调用 异步
+        this.remotingClient.invokeAsync(addr, request, timeoutMillis, new InvokeCallback() {
+            @Override  // 调用完成
+            public void operationComplete(ResponseFuture responseFuture) {
+                RemotingCommand response = responseFuture.getResponseCommand();
+                if (response != null) {
+                    try {
+                        PullResult pullResult = MQClientAPIImpl.this.processPullResponse(response, addr);
+                        assert pullResult != null;
+                        // 触发success事件
+                        pullCallback.onSuccess(pullResult);
+                    } catch (Exception e) {
+                        pullCallback.onException(e);
+                    }
+                } else {
+                    if (!responseFuture.isSendRequestOK()) {
+                        pullCallback.onException(new MQClientException(ClientErrorCode.CONNECT_BROKER_EXCEPTION, "send request failed to " + addr + ". Request: " + request, responseFuture.getCause()));
+                    } else if (responseFuture.isTimeout()) {
+                        pullCallback.onException(new MQClientException(ClientErrorCode.ACCESS_BROKER_TIMEOUT, "wait response from " + addr + " timeout :" + responseFuture.getTimeoutMillis() + "ms" + ". Request: " + request,
+                            responseFuture.getCause()));
+                    } else {
+                        pullCallback.onException(new MQClientException("unknown reason. addr: " + addr + ", timeoutMillis: " + timeoutMillis + ". Request: " + request, responseFuture.getCause()));
+                    }
+                }
+            }
+        });
+    }
+```
+
 ## CommitLog ConsumeQueue IndexFile
 
-Broker有一个服务，专门doDispatch，根据CommitLog解析出ConsumeQueue和IndexFile
+Broker有一个服务(执行异步任务的线程池)，专门doDispatch，根据CommitLog解析出ConsumeQueue和IndexFile
 
 ## Broker 主从同步
 
