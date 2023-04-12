@@ -1,5 +1,175 @@
 # RocketMQ 源码分析
 
+## 消息事务
+
+HalfMessage 半消息
+
+commit rollback
+
+事务回查 (check)
+
+如果事务没有提交成功，那么消费者永远感知不到这条消息的存在，  
+事务消息是生产者和Broker之间的事情，一旦事务消息提交成功，就会像一条普通消息一样，写到某个主题，供消费者消费，  
+半消息，会暂放放在系统主题中。
+
+## slaveReadEnable
+
+主节点宕机，消费者客户端会去从节点拉取消息，能否拉取到消息，跟主节点和从节点的slaveReadEnable配置有关，
+如果主节点或从节点的slaveReadEnable=false,则无法从从节点拉取到消息，必须主从的这个配置都为true
+
+启动 broker-a 主 从， 启动 broker-b 主 从，TopicTest 发送8条消息，每个队列各一个消息，停止broker-a主，启动消费者
+
+实验结果
+
+```text
+1. broker-a 主 slaveReadEnable=false 从 slaveReadEnable=true，主节点宕机，无法从从节点拉取消息
+2. broker-a 主 slaveReadEnable=true 从 slaveReadEnable=false，主节点宕机，无法从从节点拉取消息
+
+3. broker-a 主 slaveReadEnable=true 从 slaveReadEnable=true，主节点宕机，可以从从节点拉取消息，没有消息堆积问题
+```
+
+## 消费者 查找Broker
+
+`FindBrokerResult findBrokerResult =
+this.mQClientFactory.findBrokerAddressInSubscribe(this.mQClientFactory.getBrokerNameFromMessageQueue(mq),
+this.recalculatePullFromWhichNode(mq), false);`
+
+```text
+        // 找 Broker 结果
+        FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(
+                // Broker名字 - broker-b
+                this.mQClientFactory.getBrokerNameFromMessageQueue(mq),
+                // Broker ID - 0
+                this.recalculatePullFromWhichNode(mq), 
+                // 是否只找这个brokerName=broker-b brokerId=0的Broker
+                false);
+                
+    public FindBrokerResult findBrokerAddressInSubscribe(
+        final String brokerName,
+        final long brokerId,
+        final boolean onlyThisBroker
+    ) {
+        if (brokerName == null) {
+            return null;
+        }
+        // Broker地址
+        String brokerAddr = null;
+        boolean slave = false;
+        boolean found = false;
+        // Broerk地址表获取 BrokerName
+        // 例如 map 0 -> "192.168.1.202:10911"
+        //         1 -> "192.168.1.204:10911"
+        HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
+        if (map != null && !map.isEmpty()) {
+            // 获取 brokerId 0 的 地址
+            brokerAddr = map.get(brokerId);
+            // brokerId 不是 MASTER_ID，不是0，则slave为true
+            // 这里slave=false
+            slave = brokerId != MixAll.MASTER_ID;
+            // 有地址，则found=true
+            found = brokerAddr != null;
+            // 没找到brokerId=0的地址，并且是slave，这里slave=false，所以暂时不走这逻辑
+            if (!found && slave) {
+                // brokerId+1
+                brokerAddr = map.get(brokerId + 1);
+                found = brokerAddr != null;
+            }
+            // 找不到brokerId=0的地址 并且 不是只找这个Broker
+            // 如果brokerId=0的Master宕机，那么会走这里
+            if (!found && !onlyThisBroker) {
+                // 迭代器 下一个
+                Entry<Long, String> entry = map.entrySet().iterator().next();
+                brokerAddr = entry.getValue();
+                // 再次判断slave found
+                slave = entry.getKey() != MixAll.MASTER_ID;
+                found = true;
+            }
+        }
+        // 如果找到了
+        if (found) {
+            // 返回新的找Broker结果，borkerAddr，是否是slave，找broker版本
+            return new FindBrokerResult(brokerAddr, slave, findBrokerVersion(brokerName, brokerAddr));
+        }
+
+        return null;
+    }
+    
+-------------- 默认从 brokerId=0 的Broker拉取消息 即使主节点宕机 这里也是 返回 brokerId 0 ------------------
+    public long recalculatePullFromWhichNode(final MessageQueue mq) {
+        // 是否连接Broker 第一次不走这里 执行多次也没走这里，说明正常情况不会往这里走
+        if (this.isConnectBrokerByUser()) {
+            // 返回默认BrokerID 0
+            return this.defaultBrokerId;
+        }
+
+        AtomicLong suggest = this.pullFromWhichNodeTable.get(mq);
+        // 第一次也不走这里 执行多次也没走这里，说明正常情况不会往这里走
+        if (suggest != null) {
+            return suggest.get();
+        }
+
+        return MixAll.MASTER_ID;
+    }
+    
+---------------- 主机节点 宕机 时 ---------------------
+
+// broker-a 主节点宕机
+// brokerName=broker-a
+// brokerId=0 始终还是为0
+// onlyThisBroker false
+ public FindBrokerResult findBrokerAddressInSubscribe(
+        final String brokerName,
+        final long brokerId,       
+        final boolean onlyThisBroker
+    ) {
+        if (brokerName == null) {
+            return null;
+        }
+        // Broker地址
+        String brokerAddr = null;
+        boolean slave = false;
+        boolean found = false;
+        // Broerk地址表获取 BrokerName
+        // 例如 map 主节点宕机后，只有1
+        //         1 -> "192.168.1.203:10911"
+        HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
+        if (map != null && !map.isEmpty()) {
+            // 获取 brokerId 0 的 地址
+            brokerAddr = map.get(brokerId);
+            // brokerId 不是 MASTER_ID，不是0，则slave为true
+            // 这里slave=false
+            slave = brokerId != MixAll.MASTER_ID;
+            // 有地址，则found=true
+            found = brokerAddr != null;
+            // 没找到brokerId=0的地址，并且是slave，这里slave=false，所以暂时不走这逻辑
+            if (!found && slave) {
+                // brokerId+1
+                brokerAddr = map.get(brokerId + 1);
+                found = brokerAddr != null;
+            }
+            // 找不到brokerId=0的地址 并且 不是只找这个Broker
+            // 如果brokerId=0的Master宕机，那么会走这里
+            if (!found && !onlyThisBroker) {
+                // 迭代器 下一个
+                Entry<Long, String> entry = map.entrySet().iterator().next();
+                brokerAddr = entry.getValue();
+                // 再次判断slave found
+                slave = entry.getKey() != MixAll.MASTER_ID;
+                found = true;
+            }
+        }
+        // 如果找到了
+        if (found) {
+            // 返回新的找Broker结果，borkerAddr，是否是slave，找broker版本
+            return new FindBrokerResult(brokerAddr, slave, findBrokerVersion(brokerName, brokerAddr));
+        }
+
+        return null;
+    }    
+```
+
+不管主节点是否宕机，brokerId始终为0，说明当主节点又启动后，就又会去主节点拉取消息
+
 ## messageRequestQueue
 
 1. MessageRequest messageRequest = this.messageRequestQueue.take(); 没有数据
